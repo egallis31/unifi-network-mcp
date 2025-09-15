@@ -3,6 +3,7 @@
 import logging
 import json
 from typing import Any, Dict
+from aiounifi.errors import RequestError, ResponseError
 
 from src.runtime import server, config, firewall_manager, network_manager
 from src.utils.permissions import parse_permission
@@ -88,7 +89,7 @@ async def list_traffic_routes() -> Dict[str, Any]:
 
         site = getattr(getattr(firewall_manager, "connection", None), "site", None) or getattr(getattr(firewall_manager, "_connection", None), "site", None)
         return {"success": True, "site": site, "count": len(serializable_routes), "traffic_routes": serializable_routes}
-    except Exception as e:  # noqa: BLE001
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001
         logger.error("Error listing traffic routes: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -151,11 +152,12 @@ async def get_traffic_route_details(route_id: str) -> Dict[str, Any]:
         route_obj = next((r for r in routes if hasattr(r, "raw") and isinstance(r.raw, dict) and r.raw.get("_id") == route_id), None)
 
         if not route_obj or not route_obj.raw:
-            return {"success": False, "error": f"Traffic route '{route_id}' not found or has invalid data."}
+            return {"success": False, "
+                error": f"Traffic route '{route_id}' not found or has invalid data."}
 
         # Return raw details - ensure serializable
         return {"success": True, "route_id": route_id, "details": json.loads(json.dumps(route_obj.raw, default=str))}
-    except Exception as e:  # noqa: BLE001
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001
         logger.error("Error getting traffic route details for %s: %s", route_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -227,7 +229,7 @@ async def toggle_traffic_route(route_id: str, confirm: bool = False) -> Dict[str
                     "state_after_attempt": state_after,
                     "error": f"Failed to toggle traffic route '{route_name}'. Check server logs."}
 
-    except Exception as e:  # noqa: BLE001
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001
         logger.error("Error toggling traffic route %s: %s", route_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -310,7 +312,8 @@ async def update_traffic_route(
         routes = await firewall_manager.get_traffic_routes()
         existing_route_obj = next((r for r in routes if hasattr(r, "raw") and isinstance(r.raw, dict) and r.raw.get("_id") == route_id), None)
         if not existing_route_obj or not existing_route_obj.raw:
-            return {"success": False, "error": f"Traffic route '{route_id}' not found for update."}
+            return {"success": False, "
+                error": f"Traffic route '{route_id}' not found for update."}
 
         route_name = existing_route_obj.raw.get("name", route_id) # For logging
         updated_fields_list = list(validated_data.keys())
@@ -342,7 +345,7 @@ async def update_traffic_route(
                 "details_after_attempt": json.loads(json.dumps(details_after_attempt, default=str)) # Still return state
             }
 
-    except Exception as e:  # noqa: BLE001
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001
         logger.error("Error updating traffic route %s: %s", route_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -469,7 +472,7 @@ async def create_traffic_route(
             logger.error("Failed to create traffic route '%s'. Manager returned: %s", route_name, result)
             return {"success": False, "error": error_msg}
 
-    except Exception as e:  # noqa: BLE001
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001
         logger.error("Error in create_traffic_route tool: %s", e, exc_info=True)
         return {"success": False, "error": f"Tool error: {str(e)}"}
 

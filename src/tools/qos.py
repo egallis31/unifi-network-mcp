@@ -5,6 +5,7 @@ QoS tools for Unifi Network MCP server.
 import logging
 import json
 from typing import Dict, Any
+from aiounifi.errors import RequestError, ResponseError
 
 from src.runtime import server, config, qos_manager
 from src.utils.permissions import parse_permission
@@ -90,7 +91,7 @@ async def list_qos_rules() -> Dict[str, Any]:
         ]
         site = _get_site()
         return {"success": True, "site": site, "count": len(formatted_rules), "qos_rules": formatted_rules}
-    except Exception as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         logger.error("Error listing QoS rules: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -144,8 +145,9 @@ async def get_qos_rule_details(rule_id: str) -> Dict[str, Any]:
             site = _get_site()
             return {"success": True, "site": site, "rule_id": rule_id, "details": json.loads(json.dumps(rule, default=str))}
         else:
-            return {"success": False, "error": f"QoS rule with ID '{rule_id}' not found."}
-    except Exception as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+            return {"success": False, "
+                error": f"QoS rule with ID '{rule_id}' not found."}
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         logger.error("Error getting QoS rule %s: %s", rule_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -191,7 +193,8 @@ async def toggle_qos_rule_enabled(rule_id: str, confirm: bool = False) -> Dict[s
         # Fetch the rule first to determine current state and name
         rule = await qos_manager.get_qos_rule_details(rule_id)
         if not rule:
-            return {"success": False, "error": f"QoS rule with ID '{rule_id}' not found."}
+            return {"success": False, "
+                error": f"QoS rule with ID '{rule_id}' not found."}
 
         current_state = rule.get("enabled", False)
         new_state = not current_state
@@ -224,7 +227,7 @@ async def toggle_qos_rule_enabled(rule_id: str, confirm: bool = False) -> Dict[s
                 "error": f"Failed to toggle QoS rule '{rule_name}' ({rule_id}). Check server logs."
             }
 
-    except Exception as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         logger.error("Error toggling QoS rule %s state: %s", rule_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -295,7 +298,10 @@ async def update_qos_rule(
     try:
         # Assuming qos_manager.update_qos_rule handles fetch-merge-put or accepts partial data
         success = await qos_manager.update_qos_rule(rule_id, validated_data)
-        error_message_detail = "QoS Manager update method might need verification for partial updates."
+        error_message_detail = (
+            "QoS Manager update method might "
+            "need verification for partial updates."
+        )
 
         if success:
             updated_rule = await qos_manager.get_qos_rule_details(rule_id)
@@ -316,7 +322,7 @@ async def update_qos_rule(
                 "details_after_attempt": json.loads(json.dumps(rule_after_update, default=str))
             }
 
-    except Exception as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         logger.error("Error updating QoS rule %s: %s", rule_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -399,9 +405,10 @@ async def create_qos_rule(
         else:
             error_msg = created_rule.get("error", "Manager returned failure") if isinstance(created_rule, dict) else "Manager returned non-dict or failure"
             logger.error("Failed to create QoS rule '%s'. Reason: %s", rule_name, error_msg)
-            return {"success": False, "error": f"Failed to create QoS rule '{rule_name}'. {error_msg}"}
+            return {"success": False, "
+                error": f"Failed to create QoS rule '{rule_name}'. {error_msg}"}
 
-    except Exception as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         logger.error("Error creating QoS rule '%s': %s", rule_name, e, exc_info=True)
         return {"success": False, "error": str(e)}
 

@@ -5,15 +5,16 @@ Port forward tools for Unifi Network MCP server.
 import logging
 import json
 from typing import Dict, Any
+from aiounifi.errors import RequestError, ResponseError
 
-from src.runtime import server, config, firewall_manager 
+from src.runtime import server, config, firewall_manager
 from src.utils.permissions import parse_permission
 from src.validator_registry import UniFiValidatorRegistry # Added for validation
 
 logger = logging.getLogger(__name__) # Changed logger name for consistency
 
 @server.tool(
-    name="unifi_list_port_forwards", 
+    name="unifi_list_port_forwards",
     description="List all port forwarding rules on your Unifi Network controller."
 )
 async def list_port_forwards() -> Dict[str, Any]: # Removed context, adjusted return type
@@ -71,7 +72,7 @@ async def list_port_forwards() -> Dict[str, Any]: # Removed context, adjusted re
             for r in rules_raw
         ]
         return {"success": True, "site": getattr(getattr(firewall_manager, '_connection', None), 'site', 'default'), "count": len(port_forward_list), "port_forwards": port_forward_list}
-    except Exception as e:
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error listing port forwards: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -116,16 +117,17 @@ async def get_port_forward(port_forward_id: str) -> Dict[str, Any]: # Removed co
     try:
         if not port_forward_id:
             return {"success": False, "error": "port_forward_id is required"}
-        
+
         rule_obj = await firewall_manager.get_port_forward_by_id(port_forward_id)
         rule = rule_obj.raw if (rule_obj and hasattr(rule_obj, "raw")) else rule_obj
-        
+
         if not rule:
-            return {"success": False, "error": f"Port forwarding rule '{port_forward_id}' not found"}
-        
+            return {"success": False, "
+                error": f"Port forwarding rule '{port_forward_id}' not found"}
+
         # Return full details, ensure serializable
         return {"success": True, "port_forward_id": port_forward_id, "details": json.loads(json.dumps(rule, default=str))}
-    except Exception as e:
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error getting port forward %s: %s", port_forward_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -161,7 +163,7 @@ async def toggle_port_forward(port_forward_id: str, confirm: bool = False) -> Di
     if not parse_permission(getattr(config, 'permissions', {}), "port_forward", "update"):
         logger.warning("Permission denied for toggling port forward (%s).", port_forward_id)
         return {"success": False, "error": "Permission denied to toggle port forward."}
-        
+
     if not confirm:
         logger.warning("Confirmation missing for toggling port forward %s.", port_forward_id)
         return {"success": False, "error": "Confirmation required. Set 'confirm' to true."}
@@ -169,11 +171,12 @@ async def toggle_port_forward(port_forward_id: str, confirm: bool = False) -> Di
     try:
         if not port_forward_id:
             return {"success": False, "error": "port_forward_id is required"}
-        
+
         rule_obj = await firewall_manager.get_port_forward_by_id(port_forward_id)
         rule = rule_obj.raw if (rule_obj and hasattr(rule_obj, "raw")) else rule_obj
         if not rule:
-            return {"success": False, "error": f"Port forwarding rule '{port_forward_id}' not found"}
+            return {"success": False, "
+                error": f"Port forwarding rule '{port_forward_id}' not found"}
 
         rule_name = getattr(rule, "name", port_forward_id)
         current_state = getattr(rule, "enabled", False)
@@ -184,7 +187,7 @@ async def toggle_port_forward(port_forward_id: str, confirm: bool = False) -> Di
         # If firewall_manager.toggle_port_forward doesn't exist or works differently,
         # we might need to fetch, modify 'enabled', and call update_port_forward.
         # For now, assuming toggle_port_forward exists and returns success/failure.
-        
+
         # Let's simulate the update pattern more closely: fetch, modify, update
         update_payload = {"enabled": new_state}
         # Assuming firewall_manager has an update_port_forward method
@@ -193,41 +196,45 @@ async def toggle_port_forward(port_forward_id: str, confirm: bool = False) -> Di
 
         if success:
             logger.info("Successfully toggled port forward '%s' (%s) to %s", rule_name, port_forward_id, new_state)
-            return {"success": True, "port_forward_id": port_forward_id, "enabled": new_state, "message": f"Port forward '{rule_name}' toggled to {'enabled' if new_state else 'disabled'}."}
+            return {"success": True, "
+                port_forward_id": port_forward_id, "
+                enabled": new_state, "
+                message": f"Port forward '{rule_name}' toggled to {'enabled' if new_state else 'disabled'}."}
         else:
             # Re-fetch to check the state if the update call failed
             rule_after_toggle_obj = await firewall_manager.get_port_forward_by_id(port_forward_id)
             rule_after_toggle = rule_after_toggle_obj.raw if (rule_after_toggle_obj and hasattr(rule_after_toggle_obj, "raw")) else rule_after_toggle_obj
             state_after = getattr(rule_after_toggle, "enabled", "unknown") if rule_after_toggle else "unknown"
             logger.error("Failed to toggle port forward '%s' (%s). State after attempt: %s. Manager update returned false.", rule_name, port_forward_id, state_after)
-            return {"success": False, "error": f"Failed to toggle port forward '{rule_name}'. Check server logs."}
+            return {"success": False, "
+                error": f"Failed to toggle port forward '{rule_name}'. Check server logs."}
 
-    except Exception as e:
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error toggling port forward %s: %s", port_forward_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
 # Create Port Forward
 @server.tool(
-    name="unifi_create_port_forward", 
-    description="Create a new port forwarding rule on your Unifi Network controller using schema validation." 
+    name="unifi_create_port_forward",
+    description="Create a new port forwarding rule on your Unifi Network controller using schema validation."
 )
 async def create_port_forward(
     port_forward_data: Dict[str, Any]
 ) -> Dict[str, Any]:
     """Create a new port forwarding rule with comprehensive validation.
-    
+
     Required parameters in port_forward_data:
     - name (string): Name for the port forwarding rule
     - dst_port (string): Destination/external port (e.g., "80", "443", "22" or range "10000-10010")
     - fwd_port (string): Internal port to forward to (e.g., "80", "8080" or range "10000-10010")
     - fwd_ip (string): Internal IP address to forward to
-    
+
     Optional parameters in port_forward_data:
     - protocol (string): Network protocol - "tcp", "udp", or "tcp_udp" (default: "tcp_udp")
     - enabled (boolean): Whether rule is enabled initially (default: true)
     - src_ip (string): Source IP/CIDR to match (default: any)
     - log (boolean): Whether to log rule matches (default: false)
-    
+
     Example:
     {
         "name": "Web Server",
@@ -237,7 +244,7 @@ async def create_port_forward(
         "protocol": "tcp",
         "enabled": true
     }
-    
+
     Returns:
     - success (boolean): Whether the operation succeeded
     - port_forward_id (string): ID of the created rule if successful
@@ -247,7 +254,7 @@ async def create_port_forward(
     if not parse_permission(getattr(config, 'permissions', {}), "port_forward", "create"):
         logger.warning("Permission denied for creating port forward.")
         return {"success": False, "error": "Permission denied to create port forward."}
-        
+
     # UniFiValidatorRegistry already imported at module level
 
     # Validate the input
@@ -263,7 +270,7 @@ async def create_port_forward(
         error = f"Missing required fields: {', '.join(missing_fields)}"
         logger.warning(error)
         return {"success": False, "error": error}
-        
+
     try:
         # Prepare data for the manager
         rule_data = {
@@ -276,31 +283,32 @@ async def create_port_forward(
             "enabled": validated_data.get("enabled", True),
             "log": validated_data.get("log", False)
         }
-        
+
         # Handle optional source IP
-        if validated_data.get("src_ip"): 
+        if validated_data.get("src_ip"):
             rule_data["src"] = validated_data["src_ip"]
-        
-        logger.info("Attempting to create port forward: %s (%s %s -> %s:%s)", 
-                   validated_data['name'], rule_data['proto'], validated_data['dst_port'], 
+
+        logger.info("Attempting to create port forward: %s (%s %s -> %s:%s)",
+                   validated_data['name'], rule_data['proto'], validated_data['dst_port'],
                    validated_data['fwd_ip'], validated_data['fwd_port'])
 
         result = await firewall_manager.create_port_forward(rule_data)
-        
-        if result: 
+
+        if result:
             new_rule_id = result if isinstance(result, str) else result.get("_id", "unknown")
             details = result if isinstance(result, dict) else { "id": new_rule_id }
             logger.info("Successfully created port forward '%s' with ID %s", validated_data['name'], new_rule_id)
-            return {"success": True, 
-                    "message": f"Port forward '{validated_data['name']}' created successfully.", 
-                    "port_forward_id": new_rule_id, 
+            return {"success": True,
+                    "message": f"Port forward '{validated_data['name']}' created successfully.",
+                    "port_forward_id": new_rule_id,
                     "details": json.loads(json.dumps(details, default=str))}
         else:
             error_msg = result.get("error", "Manager returned failure") if isinstance(result, dict) else "Manager returned failure"
             logger.error("Failed to create port forward '%s'. Reason: %s", validated_data['name'], error_msg)
-            return {"success": False, "error": f"Failed to create port forward '{validated_data['name']}'. {error_msg}"}
+            return {"success": False, "
+                error": f"Failed to create port forward '{validated_data['name']}'. {error_msg}"}
 
-    except Exception as e:
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error creating port forward '%s': %s", validated_data.get('name', 'unknown'), e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -379,7 +387,7 @@ async def update_port_forward(
     if not is_valid:
         logger.warning("Invalid port forward update data for ID %s: %s", port_forward_id, error_msg)
         return {"success": False, "error": f"Invalid update data: {error_msg}"}
-    
+
     if not validated_data: # Ensure validation didn't return an empty dict if input was invalid
         logger.warning("Port forward update data for ID %s is empty after validation.", port_forward_id)
         return {"success": False, "error": "Update data is effectively empty or invalid."}
@@ -389,7 +397,8 @@ async def update_port_forward(
         existing_rule_obj = await firewall_manager.get_port_forward_by_id(port_forward_id)
         existing_rule = existing_rule_obj.raw if (existing_rule_obj and hasattr(existing_rule_obj, "raw")) else None
         if not existing_rule:
-            return {"success": False, "error": f"Port forwarding rule '{port_forward_id}' not found"}
+            return {"success": False, "
+                error": f"Port forwarding rule '{port_forward_id}' not found"}
 
         rule_name = existing_rule.get("name", port_forward_id)
 
@@ -403,13 +412,13 @@ async def update_port_forward(
                 update_payload["proto"] = value.replace('_', '/')
             elif key == "src_ip":
                 # Map src_ip to 'src', handle removal if empty string/null
-                update_payload["src"] = value if value else None 
+                update_payload["src"] = value if value else None
             # Need to handle 'log' if it's part of the schema/manager
-            elif key == "log": 
+            elif key == "log":
                 update_payload["log"] = value
             else:
                 update_payload[key] = value
-                
+
         # Add potentially missing fields required by aiounifi update that aren't directly updatable via schema but needed for context?
         # e.g. _id should be passed in the ID parameter, site_id might be handled by manager
         # We only pass the fields being changed to the manager update function
@@ -438,13 +447,13 @@ async def update_port_forward(
             rule_after_update_obj = await firewall_manager.get_port_forward_by_id(port_forward_id)
             rule_after_update = rule_after_update_obj.raw if (rule_after_update_obj and hasattr(rule_after_update_obj, "raw")) else {}
             return {
-                "success": False, 
+                "success": False,
                 "port_forward_id": port_forward_id,
                 "error": f"Failed to update port forward '{rule_name}'. Check server logs.",
                 "details_after_attempt": json.loads(json.dumps(rule_after_update, default=str)) # Provide state after failed attempt
             }
 
-    except Exception as e:
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error updating port forward %s: %s", port_forward_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 

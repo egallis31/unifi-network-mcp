@@ -59,12 +59,12 @@ class FirewallManager:
 
             result = policies
 
-            self._connection._update_cache(cache_key, result)
+            self._connection.update_cache(cache_key, result)
             return result
         except (RequestError, ResponseError) as e:
             logger.error("Error getting firewall policies: %s", e)
             return []
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Unexpected error getting firewall policies: %s", e)
             return []
 
@@ -97,14 +97,14 @@ class FirewallManager:
             )
             await self._connection.request(api_request)
 
-            self._connection._invalidate_cache(f"{CACHE_PREFIX_FIREWALL_POLICIES}_True_{self._connection.site}")
-            self._connection._invalidate_cache(f"{CACHE_PREFIX_FIREWALL_POLICIES}_False_{self._connection.site}")
+            self._connection.invalidate_cache(f"{CACHE_PREFIX_FIREWALL_POLICIES}_True_{self._connection.site}")
+            self._connection.invalidate_cache(f"{CACHE_PREFIX_FIREWALL_POLICIES}_False_{self._connection.site}")
 
             return True
         except (RequestError, ResponseError) as e:
             logger.error("Error toggling firewall policy %s: %s", policy_id, e)
             return False
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Unexpected error toggling firewall policy %s: %s", policy_id, e)
             return False
 
@@ -152,15 +152,15 @@ class FirewallManager:
             )
             await self._connection.request(api_request)
 
-            self._connection._invalidate_cache(f"{CACHE_PREFIX_FIREWALL_POLICIES}_True_{self._connection.site}")
-            self._connection._invalidate_cache(f"{CACHE_PREFIX_FIREWALL_POLICIES}_False_{self._connection.site}")
+            self._connection.invalidate_cache(f"{CACHE_PREFIX_FIREWALL_POLICIES}_True_{self._connection.site}")
+            self._connection.invalidate_cache(f"{CACHE_PREFIX_FIREWALL_POLICIES}_False_{self._connection.site}")
 
             logger.info("Successfully submitted update for firewall policy %s.", policy_id)
             return True
         except (RequestError, ResponseError) as e:
             logger.error("Error updating firewall policy %s: %s", policy_id, e, exc_info=True)
             return False
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Unexpected error updating firewall policy %s: %s", policy_id, e, exc_info=True)
             return False
 
@@ -189,12 +189,12 @@ class FirewallManager:
 
             result = routes
 
-            self._connection._update_cache(cache_key, result)
+            self._connection.update_cache(cache_key, result)
             return result
         except (RequestError, ResponseError) as e:
             logger.error("Error getting traffic routes: %s", e)
             return []
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Unexpected error getting traffic routes: %s", e)
             return []
 
@@ -222,39 +222,39 @@ class FirewallManager:
             if not route_to_update_obj:
                 logger.error("Traffic route %s not found for update.", route_id)
                 return False
-            
+
             if not hasattr(route_to_update_obj, 'raw') or not isinstance(route_to_update_obj.raw, dict):
                 logger.error("Could not get raw data for traffic route %s. Update aborted.", route_id)
                 return False
-                
+
             current_data = route_to_update_obj.raw.copy()
-            
+
             # Merge updates into current data
             updated_data = current_data
             for key, value in updates.items():
                 updated_data[key] = value
-            
+
             api_path = f"/trafficroutes/{route_id}"
-            
+
             logger.info("Updating traffic route %s via V2 endpoint (%s) with data: %s", route_id, api_path, updated_data)
 
             # Use ApiRequestV2 for the update
             api_request = ApiRequestV2(
                 method="put",
-                path=api_path, 
+                path=api_path,
                 data=updated_data # V2 typically uses the 'data' field
             )
-            
+
             # The request method should handle potential V2 response structures
             await self._connection.request(api_request)
 
             # Invalidate cache
             cache_key = f"{CACHE_PREFIX_TRAFFIC_ROUTES}_{self._connection.site}"
-            self._connection._invalidate_cache(cache_key)
+            self._connection.invalidate_cache(cache_key)
 
             logger.info("Successfully submitted V2 update for traffic route %s.", route_id)
             return True
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error updating traffic route %s via V2: %s", route_id, e, exc_info=True)
             return False
 
@@ -274,7 +274,7 @@ class FirewallManager:
             if not route:
                 logger.error("Traffic route %s not found.", route_id)
                 return False
-            
+
             if not hasattr(route, 'raw') or not isinstance(route.raw, dict):
                 logger.error("Could not get raw data for traffic route %s. Toggle aborted.", route_id)
                 return False
@@ -286,7 +286,7 @@ class FirewallManager:
             update_payload = {"enabled": new_state}
             return await self.update_traffic_route(route_id, update_payload)
 
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error toggling traffic route %s: %s", route_id, e, exc_info=True)
             return False
 
@@ -324,13 +324,13 @@ class FirewallManager:
             if isinstance(response, dict) and response.get("_id"): # Simple check if response is the new object
                 new_id = response.get("_id")
                 logger.info("Successfully created traffic route via V2. New ID: %s", new_id)
-                self._connection._invalidate_cache(f"{CACHE_PREFIX_TRAFFIC_ROUTES}_{self._connection.site}")
+                self._connection.invalidate_cache(f"{CACHE_PREFIX_TRAFFIC_ROUTES}_{self._connection.site}")
                 # Return a clear success dictionary with the ID
                 return {"success": True, "route_id": new_id}
             elif isinstance(response, list) and len(response) == 1 and response[0].get("_id"): # Sometimes APIs return a list containing the single new item
                 new_id = response[0].get("_id")
                 logger.info("Successfully created traffic route via V2 (list response). New ID: %s", new_id)
-                self._connection._invalidate_cache(f"{CACHE_PREFIX_TRAFFIC_ROUTES}_{self._connection.site}")
+                self._connection.invalidate_cache(f"{CACHE_PREFIX_TRAFFIC_ROUTES}_{self._connection.site}")
                 # Return a clear success dictionary with the ID
                 return {"success": True, "route_id": new_id}
             else:
@@ -339,10 +339,10 @@ class FirewallManager:
                 logger.error("Failed to create traffic route via V2. %s", error_detail)
                 return {"success": False, "error": error_detail}
 
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             # Log the exception details
             logger.error("Exception during V2 traffic route creation: %s", e, exc_info=True)
-            
+
             # Extract specific API error message if available
             api_error_message = str(e)
             if hasattr(e, 'args') and e.args:
@@ -353,9 +353,9 @@ class FirewallManager:
                         api_error_message = error_details['message']
                     elif isinstance(error_details, str): # Fallback if it's just a string
                         api_error_message = error_details
-                except Exception as parse_exc:
+                except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as parse_exc:
                     logger.warning("Could not parse specific API error from exception args: %s. Parse error: %s", e.args, parse_exc)
-            
+
             # Return a clear failure dictionary with the extracted error message
             return {"success": False, "error": f"API Error: {api_error_message}"}
 
@@ -374,12 +374,12 @@ class FirewallManager:
             # Use V2 endpoint for deletion
             api_request = ApiRequestV2(method="delete", path=f"/trafficroutes/{route_id}")
             await self._connection.request(api_request)
-            
+
             cache_key = f"{CACHE_PREFIX_TRAFFIC_ROUTES}_{self._connection.site}"
-            self._connection._invalidate_cache(cache_key)
+            self._connection.invalidate_cache(cache_key)
             logger.info("Successfully deleted traffic route %s", route_id)
             return True
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             # Handle specific "not found" errors if possible?
             logger.error("Error deleting traffic route %s: %s", route_id, e, exc_info=True)
             return False
@@ -405,12 +405,12 @@ class FirewallManager:
 
             result = rules
 
-            self._connection._update_cache(cache_key, result)
+            self._connection.update_cache(cache_key, result)
             return result
         except (RequestError, ResponseError) as e:
             logger.error("Error getting port forwards: %s", e)
             return []
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Unexpected error getting port forwards: %s", e)
             return []
 
@@ -426,7 +426,7 @@ class FirewallManager:
         try:
             rules = await self.get_port_forwards()
             return next((rule for rule in rules if rule.id == rule_id), None)
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error getting port forward by ID %s: %s", rule_id, e)
             return None
 
@@ -453,17 +453,17 @@ class FirewallManager:
             if not rule_to_update_obj:
                 logger.error("Port forward %s not found for update.", rule_id)
                 return False
-            
+
             if not hasattr(rule_to_update_obj, 'raw') or not isinstance(rule_to_update_obj.raw, dict):
                 logger.error("Could not get raw data for port forward %s. Update aborted.", rule_id)
                 return False
-                
+
             current_data = rule_to_update_obj.raw.copy()
-            
+
             # Merge updates into current data
             for key, value in updates.items():
                 current_data[key] = value
-                
+
             update_payload = current_data
 
             logger.info("Updating port forward %s with full data: %s", rule_id, update_payload)
@@ -473,16 +473,16 @@ class FirewallManager:
                 path=f"/rest/portforward/{rule_id}", # V1 endpoint path, corrected
                 data=update_payload
             )
-            
+
             await self._connection.request(api_request)
 
             # Invalidate cache
             cache_key = f"{CACHE_PREFIX_PORT_FORWARDS}_{self._connection.site}"
-            self._connection._invalidate_cache(cache_key)
+            self._connection.invalidate_cache(cache_key)
 
             logger.info("Successfully submitted update for port forward %s.", rule_id)
             return True
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error updating port forward %s: %s", rule_id, e, exc_info=True)
             return False
 
@@ -500,19 +500,19 @@ class FirewallManager:
             if not rule:
                 logger.error("Port forward rule %s not found.", rule_id)
                 return False
-            
+
             if not hasattr(rule, 'raw') or not isinstance(rule.raw, dict):
                 logger.error("Could not get raw data for port forward %s. Toggle aborted.", rule_id)
                 return False
 
             new_state = not rule.enabled
             logger.info("Toggling port forward %s to %s", rule_id, 'enabled' if new_state else 'disabled')
-            
+
             # Use the update method
             update_payload = {"enabled": new_state}
             return await self.update_port_forward(rule_id, update_payload)
-            
-        except Exception as e:
+
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error toggling port forward %s: %s", rule_id, e, exc_info=True)
             return False
 
@@ -549,13 +549,13 @@ class FirewallManager:
             else:
                 logger.error("Unexpected response format creating port forward: %s", response)
                 return None
-                 
+
             cache_key = f"{CACHE_PREFIX_PORT_FORWARDS}_{self._connection.site}"
-            self._connection._invalidate_cache(cache_key)
+            self._connection.invalidate_cache(cache_key)
             logger.info("Successfully created port forward '%s'", rule_data.get('name'))
             return created_rule if isinstance(created_rule, dict) else None
-            
-        except Exception as e:
+
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error creating port forward '%s': %s", rule_data.get('name', 'unknown'), e, exc_info=True)
             return None
 
@@ -574,15 +574,15 @@ class FirewallManager:
             # Use V1 endpoint as aiounifi does
             api_request = ApiRequest(
                 method="delete",
-                path=f"/rest/portforward/{rule_id}", 
+                path=f"/rest/portforward/{rule_id}",
             )
             await self._connection.request(api_request)
-            
+
             cache_key = f"{CACHE_PREFIX_PORT_FORWARDS}_{self._connection.site}"
-            self._connection._invalidate_cache(cache_key)
+            self._connection.invalidate_cache(cache_key)
             logger.info("Successfully deleted port forward %s", rule_id)
             return True
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error deleting port forward %s: %s", rule_id, e, exc_info=True)
             return False
 
@@ -624,14 +624,14 @@ class FirewallManager:
                 new_policy_id = created_policy_data.get("_id")
                 logger.info("Successfully created firewall policy '%s' with ID %s via V2.", policy_name, new_policy_id)
                 # Invalidate caches after successful creation
-                self._connection._invalidate_cache(f"{CACHE_PREFIX_FIREWALL_POLICIES}_True_{self._connection.site}")
-                self._connection._invalidate_cache(f"{CACHE_PREFIX_FIREWALL_POLICIES}_False_{self._connection.site}")
+                self._connection.invalidate_cache(f"{CACHE_PREFIX_FIREWALL_POLICIES}_True_{self._connection.site}")
+                self._connection.invalidate_cache(f"{CACHE_PREFIX_FIREWALL_POLICIES}_False_{self._connection.site}")
                 return FirewallPolicy(created_policy_data)
             else:
                 logger.error("Failed to create firewall policy '%s'. Unexpected V2 response format: %s", policy_name, response)
                 return None
 
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             # Attempt to extract a more specific error message if possible
             api_error_message = str(e)
             if hasattr(e, 'args') and e.args:
@@ -641,16 +641,16 @@ class FirewallManager:
                         api_error_message = error_details['message']
                     elif isinstance(error_details, str):
                         api_error_message = error_details
-                except Exception as parse_exc:
+                except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as parse_exc:
                     logger.warning("Could not parse specific API error from exception args: %s. Parse error: %s", e.args, parse_exc)
-            
+
             logger.error("Error creating firewall policy '%s' via V2: %s", policy_data.get('name', 'Unnamed Policy'), api_error_message, exc_info=True)
             # Optionally re-raise or return a custom error object instead of None
             return None
 
     async def delete_firewall_policy(self, policy_id: str) -> bool:
         """Delete a firewall policy by ID.
-        
+
         Args:
             policy_id: ID of the policy to delete.
 
@@ -665,11 +665,11 @@ class FirewallManager:
 
             cache_key_true = f"{CACHE_PREFIX_FIREWALL_POLICIES}_True_{self._connection.site}"
             cache_key_false = f"{CACHE_PREFIX_FIREWALL_POLICIES}_False_{self._connection.site}"
-            self._connection._invalidate_cache(cache_key_true)
-            self._connection._invalidate_cache(cache_key_false)
+            self._connection.invalidate_cache(cache_key_true)
+            self._connection.invalidate_cache(cache_key_false)
             logger.info("Successfully deleted firewall policy %s", policy_id)
             return True
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error deleting firewall policy %s: %s", policy_id, e, exc_info=True)
             return False
 
@@ -685,9 +685,9 @@ class FirewallManager:
             api_request = ApiRequestV2(method="get", path="/firewall/zones")
             resp = await self._connection.request(api_request)
             data = resp if isinstance(resp, list) else resp.get("data", []) if isinstance(resp, dict) else []
-            self._connection._update_cache(cache_key, data)
+            self._connection.update_cache(cache_key, data)
             return data
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error fetching firewall zones: %s", e)
             return []
 
@@ -703,8 +703,8 @@ class FirewallManager:
             api_request = ApiRequestV2(method="get", path="/ip-groups")
             resp = await self._connection.request(api_request)
             data = resp if isinstance(resp, list) else resp.get("data", []) if isinstance(resp, dict) else []
-            self._connection._update_cache(cache_key, data)
+            self._connection.update_cache(cache_key, data)
             return data
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error fetching ip groups: %s", e)
             return []

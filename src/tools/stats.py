@@ -6,6 +6,7 @@ This module provides MCP tools to fetch statistics from a Unifi Network Controll
 
 import logging
 from typing import Dict, Any
+from aiounifi.errors import RequestError, ResponseError
 
 from src.runtime import server, stats_manager, client_manager, device_manager
 
@@ -56,7 +57,7 @@ async def get_network_stats(duration: str = "hourly") -> Dict[str, Any]:
             "summary": summary,
             "stats": stats
         }
-    except Exception as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
         logger.error("Error getting network stats: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -116,7 +117,7 @@ async def get_client_stats(client_id: str, duration: str = "hourly") -> Dict[str
             "summary": summary,
             "stats": stats
         }
-    except Exception as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
         logger.error(
             "Error getting client stats for %s: %s", client_id, e, exc_info=True
         )
@@ -178,7 +179,7 @@ async def get_device_stats(device_id: str, duration: str = "hourly") -> Dict[str
             "summary": summary,
             "stats": stats
         }
-    except Exception as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
         logger.error(
             "Error getting device stats for %s: %s", device_id, e, exc_info=True
         )
@@ -219,7 +220,7 @@ async def get_top_clients(duration: str = "daily", limit: int = 10) -> Dict[str,
             "limit": limit,
             "top_clients": enhanced_clients
         }
-    except Exception as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
         logger.error("Error getting top clients: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -255,7 +256,7 @@ async def get_dpi_stats() -> Dict[str, Any]:
                 "categories": serialized_cats
             }
         }
-    except Exception as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
         logger.error("Error getting DPI stats: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -279,6 +280,6 @@ async def get_alerts(limit: int = 10, include_archived: bool = False) -> Dict[st
             "include_archived": include_archived,
             "alerts": alerts
         }
-    except Exception as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
         logger.error("Error getting alerts: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}

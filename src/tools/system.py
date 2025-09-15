@@ -5,6 +5,7 @@ This module provides MCP tools to interact with a Unifi Network Controller's sys
 
 import logging
 from typing import Any, Dict
+from aiounifi.errors import RequestError, ResponseError
 
 from src.runtime import server, system_manager
 
@@ -22,11 +23,11 @@ async def get_system_info() -> Dict[str, Any]:
     logger.info("unifi_get_system_info tool called")
     try:
         info = await system_manager.get_system_info()
-        connection = (getattr(system_manager, "connection", None) or 
+        connection = (getattr(system_manager, "connection", None) or
                      getattr(system_manager, "_connection", None))
         site = getattr(connection, "site", None) if connection else None
         return {"success": True, "site": site, "system_info": info}
-    except Exception as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         logger.error("Error getting system info: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -39,11 +40,11 @@ async def get_network_health() -> Dict[str, Any]:
     logger.info("unifi_get_network_health tool called")
     try:
         health = await system_manager.get_network_health()
-        connection = (getattr(system_manager, "connection", None) or 
+        connection = (getattr(system_manager, "connection", None) or
                      getattr(system_manager, "_connection", None))
         site = getattr(connection, "site", None) if connection else None
         return {"success": True, "site": site, "health_summary": health}
-    except Exception as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         logger.error("Error getting network health: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -59,11 +60,11 @@ async def get_site_settings() -> Dict[str, Any]:
     logger.info("unifi_get_site_settings tool called")
     try:
         settings = await system_manager.get_site_settings()
-        connection = (getattr(system_manager, "connection", None) or 
+        connection = (getattr(system_manager, "connection", None) or
                      getattr(system_manager, "_connection", None))
         site = getattr(connection, "site", None) if connection else None
         return {"success": True, "site": site, "site_settings": settings}
-    except Exception as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         logger.error("Error getting site settings: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}
 

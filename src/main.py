@@ -13,6 +13,7 @@ import os
 import sys
 import traceback
 
+from aiounifi.errors import RequestError, ResponseError
 from src.bootstrap import logger  # ensures logging/env setup early
 
 # Shared singletons
@@ -20,14 +21,6 @@ from src.runtime import (
     server,
     config,
     connection_manager,
-    client_manager,
-    device_manager,
-    stats_manager,
-    qos_manager,
-    vpn_manager,
-    network_manager,
-    system_manager,
-    firewall_manager,
 )
 
 from src.utils.tool_loader import auto_load_tools
@@ -57,7 +50,7 @@ def permissioned_tool(*d_args, **d_kwargs):  # acts like @server.tool
 
         try:
             allowed = parse_permission(config.permissions, category, action)
-        except Exception as exc:  # mis‑config should not crash server
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as exc:  # mis‑config should not crash server
             logger.error("Permission check failed for tool %s: %s", tool_name, exc)
             allowed = False
 
@@ -88,7 +81,7 @@ try:
     logger.info("MCP Python SDK version: %s", getattr(mcp, '__version__', 'unknown'))
     logger.info("Server methods: %s", dir(server))
     logger.info("Server tool methods: %s", [m for m in dir(server) if 'tool' in m.lower()])
-except Exception as e:
+except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
     logger.error("Error inspecting server: %s", e)
 
 # Config is loaded globally via bootstrap helper
@@ -108,9 +101,8 @@ async def main_async():
 
     # ---- VERY EARLY ASYNC LOG TEST ----
     try:
-        from src.bootstrap import logger as bootstrap_logger_async
-        bootstrap_logger_async.critical("ASYNCHRONOUS main_async() FUNCTION ENTERED - TEST MESSAGE")
-    except Exception as e:
+        logger.critical("ASYNCHRONOUS main_async() FUNCTION ENTERED - TEST MESSAGE")
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         print(f"Logging in main_async() failed: {e}", file=sys.stderr)  # Fallback
     # ---- END VERY EARLY ASYNC LOG TEST ----
 
@@ -163,7 +155,7 @@ async def main_async():
     try:
         tools = await server.list_tools()
         logger.info("Registered tools in main_async: %s", [tool.name for tool in tools])
-    except Exception as e:
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error listing tools in main_async: %s", e)
 
     # Run stdio always; optionally run HTTP transport based on config flag
@@ -231,7 +223,7 @@ async def main_async():
                         "HTTP server started via run_streamable_http_async() "
                         "using streamable HTTP transport."
                     )
-            except Exception as http_e:
+            except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as http_e:
                 transport_name = "SSE" if http_transport == "sse" else "HTTP"
                 logger.error("HTTP %s server failed to start: %s", transport_name, http_e)
                 logger.error(traceback.format_exc())
@@ -240,7 +232,7 @@ async def main_async():
     try:
         await asyncio.gather(*tasks)
         logger.info("FastMCP servers exited.")
-    except Exception as e:
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error running FastMCP servers from main_async: %s", e)
         logger.error(traceback.format_exc())
         raise
@@ -249,9 +241,8 @@ def main():
     """Synchronous entry point."""
     # ---- VERY EARLY LOG TEST ----
     try:
-        from src.bootstrap import logger as bootstrap_logger
-        bootstrap_logger.critical("SYNCHRONOUS main() FUNCTION ENTERED - TEST MESSAGE")
-    except Exception as e:
+        logger.critical("SYNCHRONOUS main() FUNCTION ENTERED - TEST MESSAGE")
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         print(f"Logging in main() failed: {e}", file=sys.stderr)  # Fallback
     # ---- END VERY EARLY LOG TEST ----
 
@@ -260,7 +251,7 @@ def main():
         asyncio.run(main_async())
     except KeyboardInterrupt:
         logger.info("Server stopped by user (KeyboardInterrupt).")
-    except Exception as e:
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.exception("Unhandled exception during server run (from asyncio.run): %s", e)
     finally:
         logger.info("Server process exiting.")

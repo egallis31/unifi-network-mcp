@@ -8,6 +8,7 @@ including managing LAN networks and WLANs.
 import logging
 import json
 from typing import Dict, Any
+from aiounifi.errors import RequestError, ResponseError
 
 from src.runtime import server, config, network_manager
 
@@ -31,18 +32,18 @@ async def list_networks() -> Dict[str, Any]:
         - success (bool): Indicates if the operation was successful.
         - site (str): The identifier of the UniFi site queried.
         - count (int): The number of networks found.
-        - networks (List[Dict]): A list of networks, each containing summary info 
+        - networks (List[Dict]): A list of networks, each containing summary info
           based on the V1 API response, such as:
             - _id (str): The unique identifier of the network.
             - name (str): The user-defined name of the network.
             - enabled (bool): Whether the network is active.
-            - purpose (str): The purpose of the network (e.g., 'corporate', 'guest', 
+            - purpose (str): The purpose of the network (e.g., 'corporate', 'guest',
               'vlan-only', 'wan').
-            - ip_subnet (str, optional): The IP subnet in CIDR notation 
+            - ip_subnet (str, optional): The IP subnet in CIDR notation
               (if applicable).
             - vlan_enabled (bool): Whether VLAN tagging is enabled.
             - vlan (int, optional): The VLAN ID (if `vlan_enabled` is true).
-            - dhcpd_enabled (bool, optional): Whether DHCP server is enabled for 
+            - dhcpd_enabled (bool, optional): Whether DHCP server is enabled for
               this network.
             - dhcpd_start (str, optional): Start IP of the DHCP range.
             - dhcpd_stop (str, optional): End IP of the DHCP range.
@@ -104,7 +105,7 @@ async def list_networks() -> Dict[str, Any]:
             "count": len(serializable_networks),
             "networks": serializable_networks
         }
-    except Exception as e:
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error listing networks in tool: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -162,14 +163,15 @@ async def get_network_details(network_id: str) -> Dict[str, Any]:
             site_id = getattr(site, 'site', None) if site else None
             # Ensure serializable
             return {
-                "success": True, 
-                "site": site_id, 
-                "network_id": network_id, 
+                "success": True,
+                "site": site_id,
+                "network_id": network_id,
                 "details": json.loads(json.dumps(network, default=str))
             }
         else:
-            return {"success": False, "error": f"Network with ID '{network_id}' not found."}
-    except Exception as e:
+            return {"success": False, "
+                error": f"Network with ID '{network_id}' not found."}
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error getting network details for %s: %s", network_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -256,7 +258,10 @@ async def update_network(
         # *** Assumption: Need network_manager.update_network(network_id, validated_data) ***
         # This method needs implementation in NetworkManager.
         success = await network_manager.update_network(network_id, validated_data)
-        error_message_detail = "Manager method update_network might not be fully implemented for partial updates."
+        error_message_detail = (
+            "Manager method update_network might not "
+            "be fully implemented for partial updates."
+        )
         if success:
             updated_network = await network_manager.get_network_details(network_id)
             logger.info("Successfully updated network (%s)", network_id)
@@ -275,7 +280,7 @@ async def update_network(
                 "error": f"Failed to update network ({network_id}). Check server logs. {error_message_detail}",
                 "details_after_attempt": json.loads(json.dumps(network_after_update, default=str))
             }
-    except Exception as e:
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error updating network %s: %s", network_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -352,11 +357,13 @@ async def create_network(
     purpose = validated_data.get("purpose")
     allowed_purposes = ["corporate", "guest", "wan", "vlan-only", "vpn-client", "vpn-server"]
     if purpose not in allowed_purposes:
-        return {"success": False, "error": f"Invalid 'purpose': {purpose}. Must be one of {allowed_purposes}."}
+        return {"success": False, "
+            error": f"Invalid 'purpose': {purpose}. Must be one of {allowed_purposes}."}
 
     # Validation based on purpose
     if purpose != 'vlan-only' and not validated_data.get("ip_subnet"):
-        return {"success": False, "error": f"'ip_subnet' is required for network purpose '{purpose}'"}
+        return {"success": False, "
+            error": f"'ip_subnet' is required for network purpose '{purpose}'"}
 
     if purpose == 'vlan-only' and not validated_data.get("vlan"):
         return {"success": False, "error": "'vlan' is required for network purpose 'vlan-only'."}
@@ -395,8 +402,9 @@ async def create_network(
         else:
             error_msg = created_network.get("error", "Manager returned failure") if isinstance(created_network, dict) else "Manager returned non-dict or failure"
             logger.error("Failed to create network '%s'. Reason: %s", validated_data.get('name'), error_msg)
-            return {"success": False, "error": f"Failed to create network '{validated_data.get('name')}'. {error_msg}"}
-    except Exception as e:
+            return {"success": False, "
+                error": f"Failed to create network '{validated_data.get('name')}'. {error_msg}"}
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error creating network '%s': %s", validated_data.get('name', 'unknown'), e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -459,7 +467,7 @@ async def list_wlans() -> Dict[str, Any]:
         site = getattr(network_manager, '_connection', None)
         site_id = getattr(site, 'site', None) if site else None
         return {"success": True, "site": site_id, "count": len(formatted_wlans), "wlans": formatted_wlans}
-    except Exception as e:
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error listing WLANs: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -515,7 +523,7 @@ async def get_wlan_details(wlan_id: str) -> Dict[str, Any]:
             return {"success": True, "site": site_id, "wlan_id": wlan_id, "details": json.loads(json.dumps(wlan, default=str))}
         else:
             return {"success": False, "error": f"WLAN with ID '{wlan_id}' not found."}
-    except Exception as e:
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error getting WLAN details for %s: %s", wlan_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
@@ -591,7 +599,10 @@ async def update_wlan(
     logger.info("Attempting to update WLAN '%s' with fields: %s", wlan_id, ', '.join(updated_fields_list))
     try:
         success = await network_manager.update_wlan(wlan_id, validated_data)
-        error_message_detail = "Manager method update_wlan might not be fully implemented for partial updates."
+        error_message_detail = (
+            "Manager method update_wlan might not "
+            "be fully implemented for partial updates."
+        )
 
         if success:
             updated_wlan = await network_manager.get_wlan_details(wlan_id)
@@ -611,7 +622,7 @@ async def update_wlan(
                 "error": f"Failed to update WLAN ({wlan_id}). Check server logs. {error_message_detail}",
                 "details_after_attempt": json.loads(json.dumps(wlan_after_update, default=str))
             }
-    except Exception as e:
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error updating WLAN %s: %s", wlan_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 @server.tool(
@@ -700,7 +711,8 @@ async def create_wlan(
         else:
             error_msg = created_wlan.get("error", "Manager returned failure") if isinstance(created_wlan, dict) else "Manager returned non-dict or failure"
             logger.error("Failed to create WLAN '%s'. Reason: %s", validated_data.get('name'), error_msg)
-            return {"success": False, "error": f"Failed to create WLAN '{validated_data.get('name')}'. {error_msg}"}
-    except Exception as e:
+            return {"success": False, "
+                error": f"Failed to create WLAN '{validated_data.get('name')}'. {error_msg}"}
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error creating WLAN '%s': %s", validated_data.get('name', 'unknown'), e, exc_info=True)
         return {"success": False, "error": str(e)}

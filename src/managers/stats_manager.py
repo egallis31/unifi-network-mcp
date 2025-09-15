@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, List, Any
 from datetime import datetime, timedelta
+from aiounifi.errors import RequestError, ResponseError
 
 from aiounifi.models.api import ApiRequest
 from aiounifi.models.event import Event  # Import Event model
@@ -80,9 +81,9 @@ class StatsManager:
             api_request = ApiRequest(method="post", path=endpoint, data=payload)
             response = await self._connection.request(api_request)
             result = response if isinstance(response, list) else []
-            self._connection._update_cache(cache_key, result, timeout=300)
+            self._connection.update_cache(cache_key, result, timeout=300)
             return result
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error getting network stats: %s", e)
             return []
 
@@ -117,9 +118,9 @@ class StatsManager:
             api_request = ApiRequest(method="post", path=endpoint, data=payload)
             response = await self._connection.request(api_request)
             result = response if isinstance(response, list) else []
-            self._connection._update_cache(cache_key, result, timeout=300)
+            self._connection.update_cache(cache_key, result, timeout=300)
             return result
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error getting stats for client %s: %s", client_mac, e)
             return []
 
@@ -155,9 +156,9 @@ class StatsManager:
             api_request = ApiRequest(method="post", path=endpoint, data=payload)
             response = await self._connection.request(api_request)
             result = response if isinstance(response, list) else []
-            self._connection._update_cache(cache_key, result, timeout=300)
+            self._connection.update_cache(cache_key, result, timeout=300)
             return result
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error getting stats for device %s: %s", device_mac, e)
             return []
 
@@ -267,9 +268,9 @@ class StatsManager:
                 "applications": dpi_apps,
                 "categories": dpi_groups
             }
-            self._connection._update_cache(cache_key, result, timeout=900)
+            self._connection.update_cache(cache_key, result, timeout=900)
             return result
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error getting DPI stats: %s", e)
             return {"applications": [], "categories": []}
 
@@ -323,12 +324,12 @@ class StatsManager:
                         if (include_archived or
                                 not event_data.get("archived", False)):
                             alerts.append(event)
-                except Exception as event_error:
+                except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as event_error:
                     logger.debug("Skipping invalid event data: %s", event_error)
                     continue
 
-            self._connection._update_cache(cache_key, alerts, timeout=60)
+            self._connection.update_cache(cache_key, alerts, timeout=60)
             return alerts
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error getting alerts: %s", e)
             return []

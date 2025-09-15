@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from typing import Any, Dict, List, Optional
+from aiounifi.errors import RequestError, ResponseError
 
 from aiounifi.models.api import ApiRequest
 from aiounifi.models.site import Site
@@ -47,9 +48,9 @@ class SystemManager:
             api_request = ApiRequest(method="get", path="/stat/sysinfo")
             response = await self._connection.request(api_request)
             info = response if isinstance(response, dict) else {}
-            self._connection._update_cache(cache_key, info, timeout=15)
+            self._connection.update_cache(cache_key, info, timeout=15)
             return info
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error getting system info: %s", e)
             return {}
 
@@ -59,7 +60,7 @@ class SystemManager:
             api_request = ApiRequest(method="get", path="/stat/status")
             response = await self._connection.request(api_request)
             return response if isinstance(response, dict) else {}
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error getting controller status: %s", e)
             return {}
 
@@ -81,7 +82,7 @@ class SystemManager:
             response = await self._connection.request(api_request, return_raw=True)
             logger.info("Backup creation requested successfully.")
             return response if isinstance(response, bytes) else None
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error(f"Error creating backup: {e}")
             return None
 
@@ -99,7 +100,7 @@ class SystemManager:
             # For now, we'll return False and log that it's not implemented
             logger.warning("Backup restore functionality not implemented - requires file upload")
             return False
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Exception during backup restore: %s", e)
             return False
 
@@ -112,7 +113,7 @@ class SystemManager:
             )
             response = await self._connection.request(api_request)
             return response if isinstance(response, dict) else {}
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error(f"Error checking firmware updates: {e}")
             return {}
 
@@ -135,7 +136,7 @@ class SystemManager:
                 logger.error(f"Error initiating controller upgrade: {response}")
 
             return success
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error(f"Error upgrading controller: {e}")
             return False
 
@@ -158,7 +159,7 @@ class SystemManager:
                 logger.error(f"Error initiating controller reboot: {response}")
 
             return success
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error(f"Error rebooting controller: {e}")
             return False
 
@@ -180,9 +181,9 @@ class SystemManager:
             api_request = ApiRequest(method="get", path=f"/get/setting/{section}")
             response = await self._connection.request(api_request)
             settings_list = response if isinstance(response, list) else []
-            self._connection._update_cache(cache_key, settings_list)
+            self._connection.update_cache(cache_key, settings_list)
             return settings_list
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error(f"Error getting {section} settings: {e}")
             return []
 
@@ -221,7 +222,7 @@ class SystemManager:
             )
             response = await self._connection.request(api_request)
 
-            self._connection._invalidate_cache(f"{CACHE_PREFIX_SETTINGS}_{section}_{self._connection.site}")
+            self._connection.invalidate_cache(f"{CACHE_PREFIX_SETTINGS}_{section}_{self._connection.site}")
 
             success = isinstance(response, dict) and response.get("meta", {}).get("rc") == "ok"
             if not success and isinstance(response, list) and len(response) > 0:
@@ -233,7 +234,7 @@ class SystemManager:
                 logger.error(f"Error updating {section} settings: {response}")
 
             return success
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error(f"Error updating {section} settings: {e}")
             return False
 
@@ -265,9 +266,9 @@ class SystemManager:
             else:
                 health = {}
 
-            self._connection._update_cache(cache_key, health, timeout=10)
+            self._connection.update_cache(cache_key, health, timeout=10)
             return health
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error(f"Error getting network health: {e}")
             return {}
 
@@ -287,7 +288,7 @@ class SystemManager:
                     **settings_list[0],
                 }
             return {"raw": settings_list}
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error(f"Error getting site settings: {e}")
             return {}
 
@@ -303,9 +304,9 @@ class SystemManager:
             response = await self._connection.request(api_request)
             sites_data = response if isinstance(response, list) else []
             sites: List[Site] = [Site(raw_site) for raw_site in sites_data]
-            self._connection._update_cache(cache_key, sites)
+            self._connection.update_cache(cache_key, sites)
             return sites
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error(f"Error getting sites: {e}")
             return []
 
@@ -367,7 +368,7 @@ class SystemManager:
             )
             response = await self._connection.request(api_request)
 
-            self._connection._invalidate_cache(CACHE_PREFIX_SITES)
+            self._connection.invalidate_cache(CACHE_PREFIX_SITES)
 
             if isinstance(response, dict) and response.get("meta", {}).get("rc") == "ok":
                 logger.info(f"Site '{site_desc}' (internal: '{formatted_name}') created successfully.")
@@ -379,7 +380,7 @@ class SystemManager:
             else:
                 logger.error(f"Error creating site: {response}")
                 return None
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error(f"Error creating site '{name}': {e}")
             return None
 
@@ -417,7 +418,7 @@ class SystemManager:
             )
             response = await self._connection.request(api_request)
 
-            self._connection._invalidate_cache(CACHE_PREFIX_SITES)
+            self._connection.invalidate_cache(CACHE_PREFIX_SITES)
 
             success = isinstance(response, dict) and response.get("meta", {}).get("rc") == "ok"
             if success:
@@ -426,7 +427,7 @@ class SystemManager:
                 logger.error(f"Error updating site {site_id}: {response}")
 
             return success
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error(f"Error updating site {site_id}: {e}")
             return False
 
@@ -465,7 +466,7 @@ class SystemManager:
             )
             response = await self._connection.request(api_request)
 
-            self._connection._invalidate_cache(CACHE_PREFIX_SITES)
+            self._connection.invalidate_cache(CACHE_PREFIX_SITES)
 
             success = isinstance(response, dict) and response.get("meta", {}).get("rc") == "ok"
             if success:
@@ -478,7 +479,7 @@ class SystemManager:
                 logger.error(f"Error deleting site {site_id}: {response}")
 
             return success
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error(f"Error deleting site {site_id}: {e}")
             return False
 
@@ -503,7 +504,7 @@ class SystemManager:
 
             await self._connection.set_site(site_name)
             return True
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error(f"Error switching to site '{site_identifier}': {e}")
             return False
 
@@ -519,9 +520,9 @@ class SystemManager:
             api_request = ApiRequest(method="get", path="/api/stat/admin")
             response = await self._connection.request(api_request)
             admins = response if isinstance(response, list) else []
-            self._connection._update_cache(cache_key, admins)
+            self._connection.update_cache(cache_key, admins)
             return admins
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error(f"Error getting admin users: {e}")
             return []
 
@@ -589,11 +590,11 @@ class SystemManager:
             )
             response = await self._connection.request(api_request)
 
-            self._connection._invalidate_cache(CACHE_PREFIX_ADMINS)
+            self._connection.invalidate_cache(CACHE_PREFIX_ADMINS)
 
             if isinstance(response, dict) and response.get("meta", {}).get("rc") == "ok":
                 logger.info(f"Admin user '{name}' created successfully.")
-                self._connection._invalidate_cache(CACHE_PREFIX_ADMINS)
+                self._connection.invalidate_cache(CACHE_PREFIX_ADMINS)
                 created_user_data = None
                 if "data" in response and isinstance(response["data"], list) and len(response["data"]) > 0:
                     created_user_data = response["data"][0]
@@ -605,7 +606,7 @@ class SystemManager:
             else:
                 logger.error(f"Error creating admin user '{name}': {response}")
                 return None
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error(f"Error creating admin user '{name}': {e}")
             return None
 
@@ -672,17 +673,17 @@ class SystemManager:
             )
             response = await self._connection.request(api_request)
 
-            self._connection._invalidate_cache(CACHE_PREFIX_ADMINS)
+            self._connection.invalidate_cache(CACHE_PREFIX_ADMINS)
 
             success = isinstance(response, dict) and response.get("meta", {}).get("rc") == "ok"
             if success:
                 logger.info("Admin user %s updated successfully.", user_id)
-                self._connection._invalidate_cache(CACHE_PREFIX_ADMINS)
+                self._connection.invalidate_cache(CACHE_PREFIX_ADMINS)
                 return True
             else:
                 logger.error(f"Error updating admin user {user_id}: {response}")
                 return False
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error(f"Error updating admin user {user_id}: {e}")
             return False
 
@@ -717,12 +718,12 @@ class SystemManager:
             success = isinstance(response, dict) and response.get("meta", {}).get("rc") == "ok"
             if success:
                 logger.info(f"Admin user {user_id} deleted successfully.")
-                self._connection._invalidate_cache(CACHE_PREFIX_ADMINS)
+                self._connection.invalidate_cache(CACHE_PREFIX_ADMINS)
                 return True
             else:
                  logger.error(f"Error deleting admin user {user_id}: {response}")
                  return False
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error(f"Error deleting admin user {user_id}: {e}")
             return False
 
@@ -760,7 +761,7 @@ class SystemManager:
             else:
                 logger.error("Error sending admin invitation to %s: %s", email, response)
                 return False
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error inviting admin user %s: %s", email, e)
             return False
 

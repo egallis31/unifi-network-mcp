@@ -42,7 +42,7 @@ def parse_permission(permissions: Dict[str, Any], category: str, action: str) ->
     if action == "delete":
         logger.info(f"Delete operation requested for category '{category}'. All delete operations are disabled.")
         return False
-        
+
     if not permissions:
         logger.warning("Permissions dictionary is empty or None. Defaulting to False.")
         return False
@@ -73,7 +73,7 @@ def parse_permission(permissions: Dict[str, Any], category: str, action: str) ->
         return True
 
     logger.warning(
-        f"Permission not found for category '{category}' (mapped to '{config_category_key}') " 
+        f"Permission not found for category '{category}' (mapped to '{config_category_key}') "
         f"and action '{action}', nor in defaults. Denying action."
     )
-    return False 
+    return False

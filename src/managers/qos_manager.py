@@ -1,5 +1,6 @@
 import logging
 from typing import Dict, List, Optional, Any
+from aiounifi.errors import RequestError, ResponseError
 
 from aiounifi.models.api import ApiRequestV2
 from src.managers.connection_manager import ConnectionManager
@@ -30,9 +31,9 @@ class QosManager:
             api_request = ApiRequestV2(method="get", path="/qos-rules")
             response = await self._connection.request(api_request)
             rules = response if isinstance(response, list) else response.get('data', []) if isinstance(response, dict) else []
-            self._connection._update_cache(cache_key, rules)
+            self._connection.update_cache(cache_key, rules)
             return rules
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error getting QoS rules: %s", e)
             return []
 
@@ -44,7 +45,7 @@ class QosManager:
             if not rule:
                 logger.warning("QoS rule %s not found in fetched list.", rule_id)
             return rule
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error getting QoS rule details for %s: %s", rule_id, e, exc_info=True)
             return None
 
@@ -63,19 +64,19 @@ class QosManager:
         if not update_data:
             logger.warning("No update data provided for QoS rule %s.", rule_id)
             return True # No action needed
-            
+
         try:
             # 1. Fetch existing rule data
             existing_rule = await self.get_qos_rule_details(rule_id)
             if not existing_rule:
                 logger.error("QoS rule %s not found for update.", rule_id)
                 return False
-                
+
             # 2. Merge updates into existing data
             merged_data = existing_rule.copy()
             for key, value in update_data.items():
                 merged_data[key] = value
-                
+
             # 3. Send the full merged data using V2 PUT
             api_request = ApiRequestV2(
                 method="put",
@@ -84,9 +85,9 @@ class QosManager:
             )
             await self._connection.request(api_request)
             logger.info("Update command sent for QoS rule %s with merged data.", rule_id)
-            self._connection._invalidate_cache(f"{CACHE_PREFIX_QOS}_{self._connection.site}")
+            self._connection.invalidate_cache(f"{CACHE_PREFIX_QOS}_{self._connection.site}")
             return True
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error updating QoS rule %s: %s", rule_id, e, exc_info=True)
             return False
 
@@ -113,7 +114,7 @@ class QosManager:
             )
             response = await self._connection.request(api_request)
             logger.info("Create command sent for QoS rule '%s'", rule_data.get('name'))
-            self._connection._invalidate_cache(f"{CACHE_PREFIX_QOS}_{self._connection.site}")
+            self._connection.invalidate_cache(f"{CACHE_PREFIX_QOS}_{self._connection.site}")
 
             if isinstance(response, dict) and "data" in response and isinstance(response["data"], list) and len(response["data"]) > 0:
                 return response["data"][0]
@@ -122,7 +123,7 @@ class QosManager:
             logger.warning("Could not extract created QoS rule data from response: %s", response)
             return None # Return None if extraction fails
 
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error creating QoS rule: %s", e)
             return None
 
@@ -142,8 +143,8 @@ class QosManager:
             )
             await self._connection.request(api_request)
             logger.info("Delete command sent for QoS rule %s", rule_id)
-            self._connection._invalidate_cache(f"{CACHE_PREFIX_QOS}_{self._connection.site}")
+            self._connection.invalidate_cache(f"{CACHE_PREFIX_QOS}_{self._connection.site}")
             return True
-        except Exception as e:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
             logger.error("Error deleting QoS rule %s: %s", rule_id, e)
-            return False 
+            return False

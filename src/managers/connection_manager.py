@@ -147,7 +147,7 @@ class ConnectionManager:
 
     async def ensure_connected(self) -> bool:
         """Ensure the controller is connected, attempting to reconnect if necessary.
-        
+
         Returns:
             bool: True if connected successfully, False otherwise.
         """
@@ -206,7 +206,10 @@ class ConnectionManager:
             response = await self.controller.request(api_request)
             duration_ms = (time.perf_counter() - start_ts) * 1000.0
             try:
-                from src.utils.diagnostics import log_api_request, diagnostics_enabled  # lazy import to avoid cycles
+                from src.utils.diagnostics import (
+                                                  log_api_request,
+                                                  diagnostics_enabled  # lazy import to avoid cycles
+                                              )
                 if diagnostics_enabled():
                     payload = getattr(api_request, "json", None) or getattr(api_request, "data", None)
                     log_api_request(api_request.method, api_request.path, payload, response, duration_ms, True)
@@ -226,7 +229,10 @@ class ConnectionManager:
                     retry_response = await self.controller.request(api_request)
                     duration_ms = (time.perf_counter() - start_ts) * 1000.0
                     try:
-                        from src.utils.diagnostics import log_api_request, diagnostics_enabled
+                        from src.utils.diagnostics import (
+                                                          log_api_request,
+                                                          diagnostics_enabled
+                                                      )
                         if diagnostics_enabled():
                             payload = getattr(api_request, "json", None) or getattr(api_request, "data", None)
                             log_api_request(api_request.method, api_request.path, payload, retry_response, duration_ms, True)
@@ -326,6 +332,14 @@ class ConnectionManager:
             self._cache = {}
             self._last_cache_update = {}
             logger.debug("Invalidated entire cache")
+
+    def update_cache(self, key: str, data: Any, timeout: Optional[int] = None):
+        """Public method to update the cache with new data."""
+        return self._update_cache(key, data, timeout)
+
+    def invalidate_cache(self, prefix: Optional[str] = None):
+        """Public method to invalidate cache entries, optionally by prefix."""
+        return self._invalidate_cache(prefix)
 
     async def set_site(self, site: str):
         """Update the target site and invalidate relevant cache.
