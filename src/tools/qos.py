@@ -4,14 +4,40 @@ QoS tools for Unifi Network MCP server.
 
 import logging
 import json
-from typing import Dict, List, Any, Optional, Iterable
+from typing import Dict, Any
 
 from src.runtime import server, config, qos_manager
-import mcp.types as types # Import the types module
 from src.utils.permissions import parse_permission
-from src.validator_registry import UniFiValidatorRegistry # Added
+from src.validator_registry import UniFiValidatorRegistry
 
 logger = logging.getLogger(__name__)
+
+
+def _get_site() -> Any:  # type: ignore[return-any]
+    """Safely retrieve the current site without relying on protected members directly.
+
+    Tries `connection.site` first, then falls back to `_connection.site`.
+    """
+    primary = getattr(qos_manager, "connection", None)
+    if primary is not None and getattr(primary, "site", None):
+        return getattr(primary, "site", None)
+    fallback = getattr(qos_manager, "_connection", None)  # noqa: SLF001  # pylint: disable=protected-access
+    return getattr(fallback, "site", None)
+
+
+def _permissions() -> Dict[str, Any]:  # type: ignore[return-type]
+    """Return permissions config (dynamic attribute; wrapper helps static analyzers).
+
+    Falls back to an empty dict if not present so permission parsing remains safe.
+    """
+    perms = getattr(config, "permissions", None)
+    if isinstance(perms, dict):  # fast path
+        return perms
+    try:
+        # If it's an OmegaConf-like object, attempt to convert
+        return dict(perms)  # type: ignore[arg-type]
+    except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        return {}
 
 @server.tool(
     name="unifi_list_qos_rules",
@@ -47,24 +73,25 @@ async def list_qos_rules() -> Dict[str, Any]:
     }
     """
     # Basic permission check (optional for read-only, but good practice)
-    if not parse_permission(config.permissions, "qos", "read"):
-        logger.warning(f"Permission denied for listing QoS rules.")
+    if not parse_permission(_permissions(), "qos", "read"):
+        logger.warning("Permission denied for listing QoS rules.")
         return {"success": False, "error": "Permission denied to list QoS rules."}
     try:
         qos_rules = await qos_manager.get_qos_rules()
-        rules_raw = [r.raw if hasattr(r, "raw") else r for r in qos_rules]
+        rules_raw = [getattr(r, "raw", r) for r in qos_rules]
         formatted_rules = [
             {
-             "id": r.get("_id"), 
-             "name": r.get("name"), 
+             "id": r.get("_id"),
+             "name": r.get("name"),
              "enabled": r.get("enabled")
              # Add other fields as needed for summary
              }
             for r in rules_raw
         ]
-        return {"success": True, "site": qos_manager._connection.site, "count": len(formatted_rules), "qos_rules": formatted_rules}
-    except Exception as e:
-        logger.error(f"Error listing QoS rules: {e}", exc_info=True)
+        site = _get_site()
+        return {"success": True, "site": site, "count": len(formatted_rules), "qos_rules": formatted_rules}
+    except Exception as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        logger.error("Error listing QoS rules: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}
 
 @server.tool(
@@ -104,21 +131,22 @@ async def get_qos_rule_details(rule_id: str) -> Dict[str, Any]:
         }
     }
     """
-    if not parse_permission(config.permissions, "qos", "read"):
-        logger.warning(f"Permission denied for getting QoS rule details ({rule_id}).")
+    if not parse_permission(_permissions(), "qos", "read"):
+        logger.warning("Permission denied for getting QoS rule details (%s).", rule_id)
         return {"success": False, "error": "Permission denied to get QoS rule details."}
     try:
         if not rule_id:
-             return {"success": False, "error": "rule_id is required"}
+            return {"success": False, "error": "rule_id is required"}
         # Assuming manager returns the raw dict or None
-        rule = await qos_manager.get_qos_rule_details(rule_id) 
+        rule = await qos_manager.get_qos_rule_details(rule_id)
         if rule:
             # Return details - ensure serializable (using json.loads/dumps for safety)
-            return {"success": True, "site": qos_manager._connection.site, "rule_id": rule_id, "details": json.loads(json.dumps(rule, default=str))}
+            site = _get_site()
+            return {"success": True, "site": site, "rule_id": rule_id, "details": json.loads(json.dumps(rule, default=str))}
         else:
-            return {"success": False, "error": f"QoS rule with ID \'{rule_id}\' not found."}
-    except Exception as e:
-        logger.error(f"Error getting QoS rule {rule_id}: {e}", exc_info=True)
+            return {"success": False, "error": f"QoS rule with ID '{rule_id}' not found."}
+    except Exception as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        logger.error("Error getting QoS rule %s: %s", rule_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
 @server.tool(
@@ -148,55 +176,56 @@ async def toggle_qos_rule_enabled(rule_id: str, confirm: bool = False) -> Dict[s
         "message": "QoS rule 'VoIP Prioritization' (60d4e5f6a7b8c9d0e1f2a3b4) toggled to disabled."
     }
     """
-    if not parse_permission(config.permissions, "qos", "update"):
-        logger.warning(f"Permission denied for updating QoS rule state ({rule_id}).")
+    if not parse_permission(_permissions(), "qos", "update"):
+        logger.warning("Permission denied for updating QoS rule state (%s).", rule_id)
         return {"success": False, "error": "Permission denied to update QoS rule state."}
 
     if not confirm:
-        logger.warning(f"Confirmation missing for toggling QoS rule {rule_id}.")
+        logger.warning("Confirmation missing for toggling QoS rule %s.", rule_id)
         return {"success": False, "error": "Confirmation required. Set 'confirm' to true."}
 
-    if not rule_id: return {"success": False, "error": "rule_id is required"}
+    if not rule_id:
+        return {"success": False, "error": "rule_id is required"}
 
     try:
         # Fetch the rule first to determine current state and name
         rule = await qos_manager.get_qos_rule_details(rule_id)
         if not rule:
             return {"success": False, "error": f"QoS rule with ID '{rule_id}' not found."}
-        
+
         current_state = rule.get("enabled", False)
         new_state = not current_state
         rule_name = rule.get("name", rule_id)
-        
-        logger.info(f"Attempting to toggle QoS rule '{rule_name}' ({rule_id}) to {new_state}")
+
+        logger.info("Attempting to toggle QoS rule '%s' (%s) to %s", rule_name, rule_id, new_state)
 
         update_data = {"enabled": new_state}
-        # Assuming qos_manager.update_qos_rule handles fetch-merge-put or accepts partial data
-        # If it requires full object, this needs adjustment in the manager.
-        success = await qos_manager.update_qos_rule(rule_id, update_data) 
-        
+        success = await qos_manager.update_qos_rule(rule_id, update_data)
+
         if success:
-            # Fetch again to confirm state
             rule_after_toggle = await qos_manager.get_qos_rule_details(rule_id)
             final_state = rule_after_toggle.get("enabled", new_state) if rule_after_toggle else new_state
-            
-            logger.info(f"Successfully toggled QoS rule '{rule_name}' ({rule_id}) enabled status to {final_state}")
-            return {"success": True, 
-                    "rule_id": rule_id, 
-                    "enabled": final_state, 
-                    "message": f"QoS rule '{rule_name}' ({rule_id}) toggled to {'enabled' if final_state else 'disabled'}."}
+
+            logger.info("Successfully toggled QoS rule '%s' (%s) enabled status to %s", rule_name, rule_id, final_state)
+            return {
+                "success": True,
+                "rule_id": rule_id,
+                "enabled": final_state,
+                "message": f"QoS rule '{rule_name}' ({rule_id}) toggled to {'enabled' if final_state else 'disabled'}."
+            }
         else:
-            logger.error(f"Failed to toggle QoS rule '{rule_name}' ({rule_id}). Manager returned false.")
-            # Fetch state after failure
+            logger.error("Failed to toggle QoS rule '%s' (%s). Manager returned false.", rule_name, rule_id)
             rule_after_fail = await qos_manager.get_qos_rule_details(rule_id)
             state_after = rule_after_fail.get("enabled", "unknown") if rule_after_fail else "unknown"
-            return {"success": False, 
-                    "rule_id": rule_id,
-                    "state_after_attempt": state_after,
-                    "error": f"Failed to toggle QoS rule '{rule_name}' ({rule_id}). Check server logs."}
-                    
-    except Exception as e:
-        logger.error(f"Error toggling QoS rule {rule_id} state: {e}", exc_info=True)
+            return {
+                "success": False,
+                "rule_id": rule_id,
+                "state_after_attempt": state_after,
+                "error": f"Failed to toggle QoS rule '{rule_name}' ({rule_id}). Check server logs."
+            }
+
+    except Exception as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        logger.error("Error toggling QoS rule %s state: %s", rule_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
 # --- NEW UPDATE QOS RULE TOOL ---
@@ -238,37 +267,39 @@ async def update_qos_rule(
             "details": { ... updated rule details ... }
         }
     """
-    if not parse_permission(config.permissions, "qos", "update"):
-        logger.warning(f"Permission denied for updating QoS rule ({rule_id}).")
+    if not parse_permission(_permissions(), "qos", "update"):
+        logger.warning("Permission denied for updating QoS rule (%s).", rule_id)
         return {"success": False, "error": "Permission denied to update QoS rule."}
 
     if not confirm:
-        logger.warning(f"Confirmation missing for updating QoS rule {rule_id}.")
+        logger.warning("Confirmation missing for updating QoS rule %s.", rule_id)
         return {"success": False, "error": "Confirmation required. Set 'confirm' to true."}
 
-    if not rule_id: return {"success": False, "error": "rule_id is required"}
-    if not update_data: return {"success": False, "error": "update_data cannot be empty"}
+    if not rule_id:
+        return {"success": False, "error": "rule_id is required"}
+    if not update_data:
+        return {"success": False, "error": "update_data cannot be empty"}
 
     # Validate the update data
     is_valid, error_msg, validated_data = UniFiValidatorRegistry.validate("qos_rule_update", update_data)
     if not is_valid:
-        logger.warning(f"Invalid QoS rule update data for ID {rule_id}: {error_msg}")
+        logger.warning("Invalid QoS rule update data for ID %s: %s", rule_id, error_msg)
         return {"success": False, "error": f"Invalid update data: {error_msg}"}
-        
+
     if not validated_data:
-        logger.warning(f"QoS rule update data for ID {rule_id} is empty after validation.")
+        logger.warning("QoS rule update data for ID %s is empty after validation.", rule_id)
         return {"success": False, "error": "Update data is effectively empty or invalid."}
 
     updated_fields_list = list(validated_data.keys())
-    logger.info(f"Attempting to update QoS rule '{rule_id}' with fields: {', '.join(updated_fields_list)}")
+    logger.info("Attempting to update QoS rule '%s' with fields: %s", rule_id, ", ".join(updated_fields_list))
     try:
         # Assuming qos_manager.update_qos_rule handles fetch-merge-put or accepts partial data
         success = await qos_manager.update_qos_rule(rule_id, validated_data)
         error_message_detail = "QoS Manager update method might need verification for partial updates."
-        
+
         if success:
             updated_rule = await qos_manager.get_qos_rule_details(rule_id)
-            logger.info(f"Successfully updated QoS rule ({rule_id})")
+            logger.info("Successfully updated QoS rule (%s)", rule_id)
             return {
                 "success": True,
                 "rule_id": rule_id,
@@ -276,7 +307,7 @@ async def update_qos_rule(
                 "details": json.loads(json.dumps(updated_rule, default=str))
             }
         else:
-            logger.error(f"Failed to update QoS rule ({rule_id}). {error_message_detail}")
+            logger.error("Failed to update QoS rule (%s). %s", rule_id, error_message_detail)
             rule_after_update = await qos_manager.get_qos_rule_details(rule_id)
             return {
                 "success": False,
@@ -285,8 +316,8 @@ async def update_qos_rule(
                 "details_after_attempt": json.loads(json.dumps(rule_after_update, default=str))
             }
 
-    except Exception as e:
-        logger.error(f"Error updating QoS rule {rule_id}: {e}", exc_info=True)
+    except Exception as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        logger.error("Error updating QoS rule %s: %s", rule_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
 
@@ -296,7 +327,7 @@ async def update_qos_rule(
 )
 async def create_qos_rule(
     # Changed to accept a single data dictionary
-    qos_data: Dict[str, Any] 
+    qos_data: Dict[str, Any]
 ) -> Dict[str, Any]:
     """Creates a new Quality of Service (QoS) rule with schema validation.
 
@@ -305,68 +336,73 @@ async def create_qos_rule(
     - interface (string): Network interface (e.g., 'WAN', 'LAN').
     - direction (string): Direction ('upload' or 'download').
     - bandwidth_limit_kbps (integer): Bandwidth limit in Kbps.
-    
+
     Optional parameters in qos_data:
     - target_ip_address (string): Specific IP address target.
     - target_subnet (string): Subnet target (CIDR notation).
     - dscp_value (integer): DSCP value (0-63).
     - enabled (boolean): Whether the rule is enabled (default: true).
-    
+
     Example:
     {
         "name": "Zoom Meetings High Priority",
         "interface": "WAN",
         "direction": "upload",
-        "bandwidth_limit_kbps": 1000, 
+        "bandwidth_limit_kbps": 1000,
         "target_subnet": "192.168.1.0/24",
-        "dscp_value": 46, 
+        "dscp_value": 46,
         "enabled": true
     }
-    
+
     Returns:
     - success (boolean): Whether the operation succeeded.
     - rule_id (string): ID of the created rule if successful.
     - details (object): Details of the created rule.
     - error (string): Error message if unsuccessful.
     """
-    if not parse_permission(config.permissions, "qos", "create"):
-        logger.warning(f"Permission denied for creating QoS rule.")
+    if not parse_permission(_permissions(), "qos", "create"):
+        logger.warning("Permission denied for creating QoS rule.")
         return {"success": False, "error": "Permission denied to create QoS rule."}
 
     # Validate the input data
     is_valid, error_msg, validated_data = UniFiValidatorRegistry.validate("qos_rule", qos_data)
     if not is_valid:
-        logger.warning(f"Invalid QoS rule data: {error_msg}")
+        logger.warning("Invalid QoS rule data: %s", error_msg)
         return {"success": False, "error": f"Invalid data: {error_msg}"}
-        
+
     # Basic required field check (covered by schema, but belt-and-suspenders)
     required = ["name", "interface", "direction", "bandwidth_limit_kbps"]
+    if validated_data is None:
+        return {"success": False, "error": "Validation returned no data."}
     if not all(k in validated_data for k in required):
         missing = [k for k in required if k not in validated_data]
         return {"success": False, "error": f"Missing required fields: {missing}"}
 
     rule_name = validated_data["name"]
-    logger.info(f"Attempting to create QoS rule '{rule_name}'")
+    logger.info("Attempting to create QoS rule '%s'", rule_name)
     try:
-        # Pass validated data directly to manager
-        created_rule = await qos_manager.create_qos_rule(validated_data) 
+        # validated_data is ensured non-None by earlier schema checks
+        assert validated_data is not None  # for type checkers
+        created_rule = await qos_manager.create_qos_rule(validated_data)
 
-        # Check manager response
-        if created_rule and created_rule.get('_id'): 
+        if created_rule and created_rule.get('_id'):
             new_rule_id = created_rule.get('_id')
-            logger.info(f"Successfully created QoS rule '{rule_name}' with ID {new_rule_id}")
-            return {"success": True, 
-                    "site": qos_manager._connection.site, 
-                    "message": f"QoS rule '{rule_name}' created successfully.", 
-                    "rule_id": new_rule_id, 
-                    "details": json.loads(json.dumps(created_rule, default=str))}
+            logger.info("Successfully created QoS rule '%s' with ID %s", rule_name, new_rule_id)
+            site = _get_site()
+            return {
+                "success": True,
+                "site": site,
+                "message": f"QoS rule '{rule_name}' created successfully.",
+                "rule_id": new_rule_id,
+                "details": json.loads(json.dumps(created_rule, default=str))
+            }
         else:
             error_msg = created_rule.get("error", "Manager returned failure") if isinstance(created_rule, dict) else "Manager returned non-dict or failure"
-            logger.error(f"Failed to create QoS rule '{rule_name}'. Reason: {error_msg}")
+            logger.error("Failed to create QoS rule '%s'. Reason: %s", rule_name, error_msg)
             return {"success": False, "error": f"Failed to create QoS rule '{rule_name}'. {error_msg}"}
-            
-    except Exception as e:
-        logger.error(f"Error creating QoS rule '{rule_name}': {e}", exc_info=True)
+
+    except Exception as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        logger.error("Error creating QoS rule '%s': %s", rule_name, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
 @server.tool(
@@ -401,7 +437,7 @@ async def create_simple_qos_rule(
     the rule and return the controller's response.
     """
 
-    if not parse_permission(config.permissions, "qos", "create"):
+    if not parse_permission(_permissions(), "qos", "create"):
         return {"success": False, "error": "Permission denied."}
 
     # --- Step 1: validate high-level schema --------------------------------

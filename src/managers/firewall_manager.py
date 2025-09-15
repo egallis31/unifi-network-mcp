@@ -6,7 +6,8 @@ from aiounifi.models.api import ApiRequest, ApiRequestV2
 from aiounifi.models.firewall_policy import FirewallPolicy
 from aiounifi.models.traffic_route import TrafficRoute
 from aiounifi.models.port_forward import PortForward
-from .connection_manager import ConnectionManager
+from aiounifi.errors import RequestError, ResponseError
+from src.managers.connection_manager import ConnectionManager
 
 logger = logging.getLogger("unifi-network-mcp")
 
@@ -60,8 +61,11 @@ class FirewallManager:
 
             self._connection._update_cache(cache_key, result)
             return result
+        except (RequestError, ResponseError) as e:
+            logger.error("Error getting firewall policies: %s", e)
+            return []
         except Exception as e:
-            logger.error(f"Error getting firewall policies: {e}")
+            logger.error("Unexpected error getting firewall policies: %s", e)
             return []
 
     async def toggle_firewall_policy(self, policy_id: str) -> bool:
@@ -78,11 +82,11 @@ class FirewallManager:
             policy: Optional[FirewallPolicy] = next((p for p in policies if p.id == policy_id), None)
 
             if not policy:
-                logger.error(f"Firewall policy {policy_id} not found.")
+                logger.error("Firewall policy %s not found.", policy_id)
                 return False
 
             new_state = not policy.enabled
-            logger.info(f"Toggling firewall policy {policy_id} to {'enabled' if new_state else 'disabled'}")
+            logger.info("Toggling firewall policy %s to %s", policy_id, 'enabled' if new_state else 'disabled')
 
             update_payload = { "enabled": new_state }
 
@@ -97,8 +101,11 @@ class FirewallManager:
             self._connection._invalidate_cache(f"{CACHE_PREFIX_FIREWALL_POLICIES}_False_{self._connection.site}")
 
             return True
+        except (RequestError, ResponseError) as e:
+            logger.error("Error toggling firewall policy %s: %s", policy_id, e)
+            return False
         except Exception as e:
-            logger.error(f"Error toggling firewall policy {policy_id}: {e}")
+            logger.error("Unexpected error toggling firewall policy %s: %s", policy_id, e)
             return False
 
     async def update_firewall_policy(self, policy_id: str, updates: Dict[str, Any]) -> bool:
@@ -115,7 +122,7 @@ class FirewallManager:
             return False
 
         if not updates:
-            logger.warning(f"No updates provided for firewall policy {policy_id}.")
+            logger.warning("No updates provided for firewall policy %s.", policy_id)
             return False # Or maybe True, as no action was needed? Returning False for clarity.
 
         try:
@@ -123,12 +130,12 @@ class FirewallManager:
             policy_to_update : Optional[FirewallPolicy] = next((p for p in all_policies if p.id == policy_id), None)
 
             if not policy_to_update:
-                logger.error(f"Firewall policy {policy_id} not found for update.")
+                logger.error("Firewall policy %s not found for update.", policy_id)
                 return False
 
             if not hasattr(policy_to_update, 'raw') or not isinstance(policy_to_update.raw, dict):
-                 logger.error(f"Could not get raw data for policy {policy_id}. Update aborted.")
-                 return False
+                logger.error("Could not get raw data for policy %s. Update aborted.", policy_id)
+                return False
             policy_data = policy_to_update.raw.copy()
 
             for key, value in updates.items():
@@ -136,22 +143,25 @@ class FirewallManager:
 
             update_payload = [policy_data]
 
-            logger.info(f"Updating firewall policy {policy_id} with full data payload: {update_payload}")
+            logger.info("Updating firewall policy %s with full data payload: %s", policy_id, update_payload)
 
             api_request = ApiRequestV2(
                 method="put",
                 path="/firewall-policies/batch",
-                data=update_payload
+                data=update_payload  # type: ignore # Batch endpoint expects list
             )
             await self._connection.request(api_request)
 
             self._connection._invalidate_cache(f"{CACHE_PREFIX_FIREWALL_POLICIES}_True_{self._connection.site}")
             self._connection._invalidate_cache(f"{CACHE_PREFIX_FIREWALL_POLICIES}_False_{self._connection.site}")
 
-            logger.info(f"Successfully submitted update for firewall policy {policy_id}.")
+            logger.info("Successfully submitted update for firewall policy %s.", policy_id)
             return True
+        except (RequestError, ResponseError) as e:
+            logger.error("Error updating firewall policy %s: %s", policy_id, e, exc_info=True)
+            return False
         except Exception as e:
-            logger.error(f"Error updating firewall policy {policy_id}: {e}", exc_info=True)
+            logger.error("Unexpected error updating firewall policy %s: %s", policy_id, e, exc_info=True)
             return False
 
     async def get_traffic_routes(self) -> List[TrafficRoute]:
@@ -181,8 +191,11 @@ class FirewallManager:
 
             self._connection._update_cache(cache_key, result)
             return result
+        except (RequestError, ResponseError) as e:
+            logger.error("Error getting traffic routes: %s", e)
+            return []
         except Exception as e:
-            logger.error(f"Error getting traffic routes: {e}")
+            logger.error("Unexpected error getting traffic routes: %s", e)
             return []
 
     async def update_traffic_route(self, route_id: str, updates: Dict[str, Any]) -> bool:
@@ -198,7 +211,7 @@ class FirewallManager:
         if not await self._connection.ensure_connected():
             return False
         if not updates:
-            logger.warning(f"No updates provided for traffic route {route_id}.")
+            logger.warning("No updates provided for traffic route %s.", route_id)
             return True # No action needed, considered success
 
         try:
@@ -207,11 +220,11 @@ class FirewallManager:
             route_to_update_obj: Optional[TrafficRoute] = next((r for r in routes if r.id == route_id), None)
 
             if not route_to_update_obj:
-                logger.error(f"Traffic route {route_id} not found for update.")
+                logger.error("Traffic route %s not found for update.", route_id)
                 return False
             
             if not hasattr(route_to_update_obj, 'raw') or not isinstance(route_to_update_obj.raw, dict):
-                logger.error(f"Could not get raw data for traffic route {route_id}. Update aborted.")
+                logger.error("Could not get raw data for traffic route %s. Update aborted.", route_id)
                 return False
                 
             current_data = route_to_update_obj.raw.copy()
@@ -223,7 +236,7 @@ class FirewallManager:
             
             api_path = f"/trafficroutes/{route_id}"
             
-            logger.info(f"Updating traffic route {route_id} via V2 endpoint ({api_path}) with data: {updated_data}")
+            logger.info("Updating traffic route %s via V2 endpoint (%s) with data: %s", route_id, api_path, updated_data)
 
             # Use ApiRequestV2 for the update
             api_request = ApiRequestV2(
@@ -239,10 +252,10 @@ class FirewallManager:
             cache_key = f"{CACHE_PREFIX_TRAFFIC_ROUTES}_{self._connection.site}"
             self._connection._invalidate_cache(cache_key)
 
-            logger.info(f"Successfully submitted V2 update for traffic route {route_id}.")
+            logger.info("Successfully submitted V2 update for traffic route %s.", route_id)
             return True
         except Exception as e:
-            logger.error(f"Error updating traffic route {route_id} via V2: {e}", exc_info=True)
+            logger.error("Error updating traffic route %s via V2: %s", route_id, e, exc_info=True)
             return False
 
     async def toggle_traffic_route(self, route_id: str) -> bool:
@@ -259,22 +272,22 @@ class FirewallManager:
             route: Optional[TrafficRoute] = next((r for r in routes if r.id == route_id), None)
 
             if not route:
-                logger.error(f"Traffic route {route_id} not found.")
+                logger.error("Traffic route %s not found.", route_id)
                 return False
             
             if not hasattr(route, 'raw') or not isinstance(route.raw, dict):
-                 logger.error(f"Could not get raw data for traffic route {route_id}. Toggle aborted.")
-                 return False
+                logger.error("Could not get raw data for traffic route %s. Toggle aborted.", route_id)
+                return False
 
             new_state = not route.enabled
-            logger.info(f"Toggling traffic route {route_id} to {'enabled' if new_state else 'disabled'}")
+            logger.info("Toggling traffic route %s to %s", route_id, 'enabled' if new_state else 'disabled')
 
             # Use the update method for consistency
             update_payload = {"enabled": new_state}
             return await self.update_traffic_route(route_id, update_payload)
 
         except Exception as e:
-            logger.error(f"Error toggling traffic route {route_id}: {e}", exc_info=True)
+            logger.error("Error toggling traffic route %s: %s", route_id, e, exc_info=True)
             return False
 
     async def create_traffic_route(self, route_data: Dict[str, Any]) -> Optional[Dict]:
@@ -293,10 +306,10 @@ class FirewallManager:
             return None
 
         try:
-            logger.info(f"Attempting to create traffic route '{route_data['name']}'")
+            logger.info("Attempting to create traffic route '%s'", route_data['name'])
             api_path = "/trafficroutes" # V2 endpoint for creation
             # Log the exact data being sent for easier debugging
-            logger.info(f"Attempting to create traffic route via V2 endpoint ({api_path}) with payload: {json.dumps(route_data, indent=2)}")
+            logger.info("Attempting to create traffic route via V2 endpoint (%s) with payload: %s", api_path, json.dumps(route_data, indent=2))
 
             # Use ApiRequestV2 for the creation
             api_request = ApiRequestV2(
@@ -309,26 +322,26 @@ class FirewallManager:
             # Check response structure for success and ID (adjust based on actual V2 response)
             # Example V2 success might be a 201 Created with the new object or ID in body/headers
             if isinstance(response, dict) and response.get("_id"): # Simple check if response is the new object
-                 new_id = response.get("_id")
-                 logger.info(f"Successfully created traffic route via V2. New ID: {new_id}")
-                 self._connection._invalidate_cache(f"{CACHE_PREFIX_TRAFFIC_ROUTES}_{self._connection.site}")
-                 # Return a clear success dictionary with the ID
-                 return {"success": True, "route_id": new_id}
+                new_id = response.get("_id")
+                logger.info("Successfully created traffic route via V2. New ID: %s", new_id)
+                self._connection._invalidate_cache(f"{CACHE_PREFIX_TRAFFIC_ROUTES}_{self._connection.site}")
+                # Return a clear success dictionary with the ID
+                return {"success": True, "route_id": new_id}
             elif isinstance(response, list) and len(response) == 1 and response[0].get("_id"): # Sometimes APIs return a list containing the single new item
-                 new_id = response[0].get("_id")
-                 logger.info(f"Successfully created traffic route via V2 (list response). New ID: {new_id}")
-                 self._connection._invalidate_cache(f"{CACHE_PREFIX_TRAFFIC_ROUTES}_{self._connection.site}")
-                 # Return a clear success dictionary with the ID
-                 return {"success": True, "route_id": new_id}
+                new_id = response[0].get("_id")
+                logger.info("Successfully created traffic route via V2 (list response). New ID: %s", new_id)
+                self._connection._invalidate_cache(f"{CACHE_PREFIX_TRAFFIC_ROUTES}_{self._connection.site}")
+                # Return a clear success dictionary with the ID
+                return {"success": True, "route_id": new_id}
             else:
                 # Handle unexpected non-error response
                 error_detail = f"Unexpected success response format: {str(response)}"
-                logger.error(f"Failed to create traffic route via V2. {error_detail}")
+                logger.error("Failed to create traffic route via V2. %s", error_detail)
                 return {"success": False, "error": error_detail}
 
         except Exception as e:
             # Log the exception details
-            logger.error(f"Exception during V2 traffic route creation: {e}", exc_info=True)
+            logger.error("Exception during V2 traffic route creation: %s", e, exc_info=True)
             
             # Extract specific API error message if available
             api_error_message = str(e)
@@ -339,9 +352,9 @@ class FirewallManager:
                     if isinstance(error_details, dict) and 'message' in error_details:
                         api_error_message = error_details['message']
                     elif isinstance(error_details, str): # Fallback if it's just a string
-                         api_error_message = error_details
+                        api_error_message = error_details
                 except Exception as parse_exc:
-                    logger.warning(f"Could not parse specific API error from exception args: {e.args}. Parse error: {parse_exc}")
+                    logger.warning("Could not parse specific API error from exception args: %s. Parse error: %s", e.args, parse_exc)
             
             # Return a clear failure dictionary with the extracted error message
             return {"success": False, "error": f"API Error: {api_error_message}"}
@@ -364,11 +377,11 @@ class FirewallManager:
             
             cache_key = f"{CACHE_PREFIX_TRAFFIC_ROUTES}_{self._connection.site}"
             self._connection._invalidate_cache(cache_key)
-            logger.info(f"Successfully deleted traffic route {route_id}")
+            logger.info("Successfully deleted traffic route %s", route_id)
             return True
         except Exception as e:
             # Handle specific "not found" errors if possible?
-            logger.error(f"Error deleting traffic route {route_id}: {e}", exc_info=True)
+            logger.error("Error deleting traffic route %s: %s", route_id, e, exc_info=True)
             return False
 
     async def get_port_forwards(self) -> List[PortForward]:
@@ -394,8 +407,11 @@ class FirewallManager:
 
             self._connection._update_cache(cache_key, result)
             return result
+        except (RequestError, ResponseError) as e:
+            logger.error("Error getting port forwards: %s", e)
+            return []
         except Exception as e:
-            logger.error(f"Error getting port forwards: {e}")
+            logger.error("Unexpected error getting port forwards: %s", e)
             return []
 
     async def get_port_forward_by_id(self, rule_id: str) -> Optional[PortForward]:
@@ -411,7 +427,7 @@ class FirewallManager:
             rules = await self.get_port_forwards()
             return next((rule for rule in rules if rule.id == rule_id), None)
         except Exception as e:
-            logger.error(f"Error getting port forward by ID {rule_id}: {e}")
+            logger.error("Error getting port forward by ID %s: %s", rule_id, e)
             return None
 
     async def update_port_forward(self, rule_id: str, updates: Dict[str, Any]) -> bool:
@@ -427,7 +443,7 @@ class FirewallManager:
         if not await self._connection.ensure_connected():
             return False
         if not updates:
-            logger.warning(f"No updates provided for port forward {rule_id}.")
+            logger.warning("No updates provided for port forward %s.", rule_id)
             return True # No action needed, considered success
 
         try:
@@ -435,12 +451,12 @@ class FirewallManager:
             rule_to_update_obj = await self.get_port_forward_by_id(rule_id)
 
             if not rule_to_update_obj:
-                logger.error(f"Port forward {rule_id} not found for update.")
+                logger.error("Port forward %s not found for update.", rule_id)
                 return False
             
             if not hasattr(rule_to_update_obj, 'raw') or not isinstance(rule_to_update_obj.raw, dict):
-                 logger.error(f"Could not get raw data for port forward {rule_id}. Update aborted.")
-                 return False
+                logger.error("Could not get raw data for port forward %s. Update aborted.", rule_id)
+                return False
                 
             current_data = rule_to_update_obj.raw.copy()
             
@@ -450,12 +466,12 @@ class FirewallManager:
                 
             update_payload = current_data
 
-            logger.info(f"Updating port forward {rule_id} with full data: {update_payload}")
+            logger.info("Updating port forward %s with full data: %s", rule_id, update_payload)
 
             api_request = ApiRequest(
                 method="put",
                 path=f"/rest/portforward/{rule_id}", # V1 endpoint path, corrected
-                json=update_payload
+                data=update_payload
             )
             
             await self._connection.request(api_request)
@@ -464,10 +480,10 @@ class FirewallManager:
             cache_key = f"{CACHE_PREFIX_PORT_FORWARDS}_{self._connection.site}"
             self._connection._invalidate_cache(cache_key)
 
-            logger.info(f"Successfully submitted update for port forward {rule_id}.")
+            logger.info("Successfully submitted update for port forward %s.", rule_id)
             return True
         except Exception as e:
-            logger.error(f"Error updating port forward {rule_id}: {e}", exc_info=True)
+            logger.error("Error updating port forward %s: %s", rule_id, e, exc_info=True)
             return False
 
     async def toggle_port_forward(self, rule_id: str) -> bool:
@@ -482,22 +498,22 @@ class FirewallManager:
         try:
             rule = await self.get_port_forward_by_id(rule_id)
             if not rule:
-                logger.error(f"Port forward rule {rule_id} not found.")
+                logger.error("Port forward rule %s not found.", rule_id)
                 return False
             
             if not hasattr(rule, 'raw') or not isinstance(rule.raw, dict):
-                 logger.error(f"Could not get raw data for port forward {rule_id}. Toggle aborted.")
-                 return False
+                logger.error("Could not get raw data for port forward %s. Toggle aborted.", rule_id)
+                return False
 
             new_state = not rule.enabled
-            logger.info(f"Toggling port forward {rule_id} to {'enabled' if new_state else 'disabled'}")
+            logger.info("Toggling port forward %s to %s", rule_id, 'enabled' if new_state else 'disabled')
             
             # Use the update method
             update_payload = {"enabled": new_state}
             return await self.update_port_forward(rule_id, update_payload)
             
         except Exception as e:
-            logger.error(f"Error toggling port forward {rule_id}: {e}", exc_info=True)
+            logger.error("Error toggling port forward %s: %s", rule_id, e, exc_info=True)
             return False
 
     async def create_port_forward(self, rule_data: Dict[str, Any]) -> Optional[Dict]:
@@ -514,33 +530,33 @@ class FirewallManager:
         required_keys = {"name", "dst_port", "fwd_port", "fwd_ip"}
         if not required_keys.issubset(rule_data.keys()):
             missing = required_keys - rule_data.keys()
-            logger.error(f"Missing required keys for creating port forward: {missing}")
+            logger.error("Missing required keys for creating port forward: %s", missing)
             return None
 
         try:
-            logger.info(f"Attempting to create port forward rule '{rule_data['name']}'")
+            logger.info("Attempting to create port forward rule '%s'", rule_data['name'])
             api_request = ApiRequest(
                 method="post",
                 path="/rest/portforward", # V1 endpoint path, corrected
-                json=rule_data,
+                data=rule_data,
             )
             response = await self._connection.request(api_request)
 
             # V1 POST usually returns a list containing the created object within 'data'
             created_rule = None
             if isinstance(response, dict) and 'data' in response and isinstance(response['data'], list) and len(response['data']) > 0:
-                 created_rule = response['data'][0]
+                created_rule = response['data'][0]
             else:
-                 logger.error(f"Unexpected response format creating port forward: {response}")
-                 return None
+                logger.error("Unexpected response format creating port forward: %s", response)
+                return None
                  
             cache_key = f"{CACHE_PREFIX_PORT_FORWARDS}_{self._connection.site}"
             self._connection._invalidate_cache(cache_key)
-            logger.info(f"Successfully created port forward '{rule_data.get('name')}'")
+            logger.info("Successfully created port forward '%s'", rule_data.get('name'))
             return created_rule if isinstance(created_rule, dict) else None
             
         except Exception as e:
-            logger.error(f"Error creating port forward '{rule_data.get('name', 'unknown')}': {e}", exc_info=True)
+            logger.error("Error creating port forward '%s': %s", rule_data.get('name', 'unknown'), e, exc_info=True)
             return None
 
     async def delete_port_forward(self, rule_id: str) -> bool:
@@ -564,10 +580,10 @@ class FirewallManager:
             
             cache_key = f"{CACHE_PREFIX_PORT_FORWARDS}_{self._connection.site}"
             self._connection._invalidate_cache(cache_key)
-            logger.info(f"Successfully deleted port forward {rule_id}")
+            logger.info("Successfully deleted port forward %s", rule_id)
             return True
         except Exception as e:
-            logger.error(f"Error deleting port forward {rule_id}: {e}", exc_info=True)
+            logger.error("Error deleting port forward %s: %s", rule_id, e, exc_info=True)
             return False
 
     async def create_firewall_policy(self, policy_data: Dict[str, Any]) -> Optional[FirewallPolicy]:
@@ -585,7 +601,7 @@ class FirewallManager:
 
         try:
             policy_name = policy_data.get('name', 'Unnamed Policy')
-            logger.info(f"Attempting to create firewall policy '{policy_name}' via V2 endpoint.")
+            logger.info("Attempting to create firewall policy '%s' via V2 endpoint.", policy_name)
             # Log the payload for debugging, ensuring sensitive data isn't exposed if necessary
             # logger.debug(f"Firewall policy create payload: {json.dumps(policy_data, indent=2)}")
 
@@ -606,29 +622,29 @@ class FirewallManager:
 
             if created_policy_data:
                 new_policy_id = created_policy_data.get("_id")
-                logger.info(f"Successfully created firewall policy '{policy_name}' with ID {new_policy_id} via V2.")
+                logger.info("Successfully created firewall policy '%s' with ID %s via V2.", policy_name, new_policy_id)
                 # Invalidate caches after successful creation
                 self._connection._invalidate_cache(f"{CACHE_PREFIX_FIREWALL_POLICIES}_True_{self._connection.site}")
                 self._connection._invalidate_cache(f"{CACHE_PREFIX_FIREWALL_POLICIES}_False_{self._connection.site}")
                 return FirewallPolicy(created_policy_data)
             else:
-                logger.error(f"Failed to create firewall policy '{policy_name}'. Unexpected V2 response format: {response}")
+                logger.error("Failed to create firewall policy '%s'. Unexpected V2 response format: %s", policy_name, response)
                 return None
 
         except Exception as e:
             # Attempt to extract a more specific error message if possible
             api_error_message = str(e)
             if hasattr(e, 'args') and e.args:
-                 try:
-                     error_details = e.args[0]
-                     if isinstance(error_details, dict) and 'message' in error_details:
-                         api_error_message = error_details['message']
-                     elif isinstance(error_details, str):
-                          api_error_message = error_details
-                 except Exception as parse_exc:
-                     logger.warning(f"Could not parse specific API error from exception args: {e.args}. Parse error: {parse_exc}")
+                try:
+                    error_details = e.args[0]
+                    if isinstance(error_details, dict) and 'message' in error_details:
+                        api_error_message = error_details['message']
+                    elif isinstance(error_details, str):
+                        api_error_message = error_details
+                except Exception as parse_exc:
+                    logger.warning("Could not parse specific API error from exception args: %s. Parse error: %s", e.args, parse_exc)
             
-            logger.error(f"Error creating firewall policy '{policy_data.get('name', 'Unnamed Policy')}' via V2: {api_error_message}", exc_info=True)
+            logger.error("Error creating firewall policy '%s' via V2: %s", policy_data.get('name', 'Unnamed Policy'), api_error_message, exc_info=True)
             # Optionally re-raise or return a custom error object instead of None
             return None
 
@@ -651,10 +667,10 @@ class FirewallManager:
             cache_key_false = f"{CACHE_PREFIX_FIREWALL_POLICIES}_False_{self._connection.site}"
             self._connection._invalidate_cache(cache_key_true)
             self._connection._invalidate_cache(cache_key_false)
-            logger.info(f"Successfully deleted firewall policy {policy_id}")
+            logger.info("Successfully deleted firewall policy %s", policy_id)
             return True
         except Exception as e:
-            logger.error(f"Error deleting firewall policy {policy_id}: {e}", exc_info=True)
+            logger.error("Error deleting firewall policy %s: %s", policy_id, e, exc_info=True)
             return False
 
     async def get_firewall_zones(self) -> List[Dict[str, Any]]:
@@ -672,7 +688,7 @@ class FirewallManager:
             self._connection._update_cache(cache_key, data)
             return data
         except Exception as e:
-            logger.error(f"Error fetching firewall zones: {e}")
+            logger.error("Error fetching firewall zones: %s", e)
             return []
 
     async def get_ip_groups(self) -> List[Dict[str, Any]]:
@@ -690,5 +706,5 @@ class FirewallManager:
             self._connection._update_cache(cache_key, data)
             return data
         except Exception as e:
-            logger.error(f"Error fetching ip groups: {e}")
+            logger.error("Error fetching ip groups: %s", e)
             return []

@@ -9,9 +9,9 @@ Responsibilities:
 
 import asyncio
 import logging
-import traceback
-import sys # Removed uvicorn import
 import os
+import sys
+import traceback
 
 from src.bootstrap import logger  # ensures logging/env setup early
 
@@ -39,7 +39,10 @@ _original_tool_decorator = server.tool  # keep reference to wrap later
 def permissioned_tool(*d_args, **d_kwargs):  # acts like @server.tool
     """Decorator that only registers the tool if permission allows."""
 
-    tool_name = d_kwargs.get("name") if d_kwargs.get("name") else (d_args[0] if d_args else None)
+    tool_name = (
+        d_kwargs.get("name") if d_kwargs.get("name")
+        else (d_args[0] if d_args else None)
+    )
 
     category = d_kwargs.pop("permission_category", None)
     action = d_kwargs.pop("permission_action", None)
@@ -60,7 +63,10 @@ def permissioned_tool(*d_args, **d_kwargs):  # acts like @server.tool
 
         if allowed:
             # Wrap with diagnostics if enabled
-            wrapped = wrap_tool(func, tool_name or getattr(func, "__name__", "<tool>")) if diagnostics_enabled() else func
+            wrapped = (
+                wrap_tool(func, tool_name or getattr(func, "__name__", "<tool>"))
+                if diagnostics_enabled() else func
+            )
             return _original_tool_decorator(*d_args, **d_kwargs)(wrapped)
 
         logger.info(
@@ -79,11 +85,11 @@ server.tool = permissioned_tool  # type: ignore
 # Log server version and capabilities
 try:
     import mcp
-    logger.info(f"MCP Python SDK version: {getattr(mcp, '__version__', 'unknown')}")
-    logger.info(f"Server methods: {dir(server)}")
-    logger.info(f"Server tool methods: {[m for m in dir(server) if 'tool' in m.lower()]}")
+    logger.info("MCP Python SDK version: %s", getattr(mcp, '__version__', 'unknown'))
+    logger.info("Server methods: %s", dir(server))
+    logger.info("Server tool methods: %s", [m for m in dir(server) if 'tool' in m.lower()])
 except Exception as e:
-    logger.error(f"Error inspecting server: {e}")
+    logger.error("Error inspecting server: %s", e)
 
 # Config is loaded globally via bootstrap helper
 logger.info("Loaded configuration globally.")
@@ -105,23 +111,27 @@ async def main_async():
         from src.bootstrap import logger as bootstrap_logger_async
         bootstrap_logger_async.critical("ASYNCHRONOUS main_async() FUNCTION ENTERED - TEST MESSAGE")
     except Exception as e:
-        print(f"Logging in main_async() failed: {e}", file=sys.stderr) # Fallback
+        print(f"Logging in main_async() failed: {e}", file=sys.stderr)  # Fallback
     # ---- END VERY EARLY ASYNC LOG TEST ----
 
     # --- Add asyncio global exception handler ---
     loop = asyncio.get_event_loop()
 
-    def handle_asyncio_exception(loop, context):
+    def handle_asyncio_exception(_loop, context):
         exc = context.get("exception", context["message"])
-        log_message = f"Global asyncio exception handler caught: {exc}"
+        log_message = "Global asyncio exception handler caught: %s"
+        logger.error(log_message, exc)
         if 'future' in context and context['future']:
-            log_message += f"\nFuture: {context['future']}"
+            logger.error("Future: %s", context['future'])
         if 'handle' in context and context['handle']:
-            log_message += f"\nHandle: {context['handle']}"
-        logger.error(log_message)
+            logger.error("Handle: %s", context['handle'])
         if context.get("exception"):
-            orig_traceback = ''.join(traceback.format_exception(type(context["exception"]), context["exception"], context["exception"].__traceback__))
-            logger.error(f"Original traceback for global asyncio exception:\n{orig_traceback}")
+            orig_traceback = ''.join(traceback.format_exception(
+                type(context["exception"]),
+                context["exception"],
+                context["exception"].__traceback__
+            ))
+            logger.error("Original traceback for global asyncio exception:\n%s", orig_traceback)
 
     loop.set_exception_handler(handle_asyncio_exception)
     logger.info("Global asyncio exception handler set.")
@@ -131,13 +141,18 @@ async def main_async():
     log_level = config.server.get("log_level", "INFO").upper()
     # Ensure logging is configured (might be redundant if already set by bootstrap)
     # but this ensures the level is applied if changed post-bootstrap.
-    logging.basicConfig(level=getattr(logging, log_level, logging.INFO), force=True) # Use default format
-    logger.info(f"Log level set to {log_level} in main_async.")
+    logging.basicConfig(
+        level=getattr(logging, log_level, logging.INFO), force=True
+    )  # Use default format
+    logger.info("Log level set to %s in main_async.", log_level)
 
     # Initialize the global Unifi connection
     logger.info("Initializing global Unifi connection from main_async...")
     if not await connection_manager.initialize():
-        logger.error("Failed to connect to Unifi Controller from main_async. Tool functionality may be impaired.")
+        logger.error(
+            "Failed to connect to Unifi Controller from main_async. "
+            "Tool functionality may be impaired."
+        )
     else:
         logger.info("Global Unifi connection initialized successfully from main_async.")
 
@@ -147,9 +162,9 @@ async def main_async():
     # List all registered tools for debugging
     try:
         tools = await server.list_tools()
-        logger.info(f"Registered tools in main_async: {[tool.name for tool in tools]}")
+        logger.info("Registered tools in main_async: %s", [tool.name for tool in tools])
     except Exception as e:
-        logger.error(f"Error listing tools in main_async: {e}")
+        logger.error("Error listing tools in main_async: %s", e)
 
     # Run stdio always; optionally run HTTP transport based on config flag
     host = config.server.get("host", "0.0.0.0")
@@ -164,16 +179,19 @@ async def main_async():
     # Get transport type (http is now default/recommended, sse for backward compatibility)
     http_transport = http_cfg.get("transport", "http").lower()
     if http_transport not in {"http", "sse"}:
-        logger.warning(f"Invalid HTTP transport '{http_transport}', defaulting to 'http'")
+        logger.warning("Invalid HTTP transport '%s', defaulting to 'http'", http_transport)
         http_transport = "http"
-    
+
     # Get optional path for HTTP transport
     http_path = http_cfg.get("path", "/mcp")
 
     # Only the main container process (PID 1) should bind the HTTP port.
     is_main_container_process = os.getpid() == 1
     if http_enabled and not is_main_container_process:
-        logger.info("HTTP transport enabled in config but skipped in exec session (PID %s != 1)", os.getpid())
+        logger.info(
+            "HTTP transport enabled in config but skipped in exec session (PID %s != 1)",
+            os.getpid()
+        )
         http_enabled = False
 
     async def run_stdio():
@@ -185,26 +203,37 @@ async def main_async():
         async def run_http_transport():
             try:
                 if http_transport == "sse":
-                    logger.info(f"Starting FastMCP HTTP SSE server on {host}:{port} (legacy mode) ...")
-                    logger.warning("SSE transport is legacy - consider migrating to HTTP transport for new deployments")
+                    logger.info(
+                        "Starting FastMCP HTTP SSE server on %s:%s (legacy mode) ...",
+                        host, port
+                    )
+                    logger.warning(
+                        "SSE transport is legacy - consider migrating to HTTP transport "
+                        "for new deployments"
+                    )
                     # MCP SDK >= 1.10 (pinned to 1.13.1): configure host/port via settings
                     server.settings.host = host
                     server.settings.port = port
                     await server.run_sse_async()
-                    logger.info("HTTP SSE started via run_sse_async() using server.settings host/port.")
+                    logger.info(
+                        "HTTP SSE started via run_sse_async() using server.settings host/port."
+                    )
                 else:  # http_transport == "http"
-                    logger.info(f"Starting FastMCP HTTP server on {host}:{port}{http_path} (streamable HTTP) ...")
-                    # Configure server settings for HTTP transport
-                    server.settings.host = host
-                    server.settings.port = port
+                    logger.info(
+                        "Starting FastMCP HTTP server on %s:%s%s (streamable HTTP) ...",
+                        host, port, http_path
+                    )
                     # Configure server settings for HTTP transport
                     server.settings.host = host
                     server.settings.port = port
                     await server.run_streamable_http_async()
-                    logger.info("HTTP server started via run_streamable_http_async() using streamable HTTP transport.")
+                    logger.info(
+                        "HTTP server started via run_streamable_http_async() "
+                        "using streamable HTTP transport."
+                    )
             except Exception as http_e:
                 transport_name = "SSE" if http_transport == "sse" else "HTTP"
-                logger.error(f"HTTP {transport_name} server failed to start: {http_e}")
+                logger.error("HTTP %s server failed to start: %s", transport_name, http_e)
                 logger.error(traceback.format_exc())
         tasks.append(run_http_transport())
 
@@ -212,7 +241,7 @@ async def main_async():
         await asyncio.gather(*tasks)
         logger.info("FastMCP servers exited.")
     except Exception as e:
-        logger.error(f"Error running FastMCP servers from main_async: {e}")
+        logger.error("Error running FastMCP servers from main_async: %s", e)
         logger.error(traceback.format_exc())
         raise
 
@@ -223,10 +252,10 @@ def main():
         from src.bootstrap import logger as bootstrap_logger
         bootstrap_logger.critical("SYNCHRONOUS main() FUNCTION ENTERED - TEST MESSAGE")
     except Exception as e:
-        print(f"Logging in main() failed: {e}", file=sys.stderr) # Fallback
+        print(f"Logging in main() failed: {e}", file=sys.stderr)  # Fallback
     # ---- END VERY EARLY LOG TEST ----
-    
-    logger.debug("Starting main()") # This uses the logger from bootstrap via global scope
+
+    logger.debug("Starting main()")  # This uses the logger from bootstrap via global scope
     try:
         asyncio.run(main_async())
     except KeyboardInterrupt:

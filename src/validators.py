@@ -1,7 +1,9 @@
+"""Validators for UniFi Network resource creation and validation."""
+
 import logging
-from typing import Dict, List, Optional, Tuple, Any
-import json
-from jsonschema import validate, ValidationError
+from typing import Any, Dict, Optional, Tuple
+
+from jsonschema import ValidationError, validate
 
 logger = logging.getLogger("unifi-network-mcp")
 
@@ -12,7 +14,9 @@ class ResourceValidator:
         self.schema = schema
         self.resource_name = resource_name
     
-    def validate(self, params: Dict[str, Any]) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+    def validate(
+        self, params: Dict[str, Any]
+    ) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
         """Validate parameters against schema.
         
         Args:
@@ -29,14 +33,16 @@ class ResourceValidator:
             
             return True, None, params
         except ValidationError as e:
-            logger.error(f"{self.resource_name} validation error: {e.message}")
-            return False, f"{self.resource_name} validation error: {e.message}", None
+            error_msg = "%s validation error: %s"
+            logger.error(error_msg, self.resource_name, e.message)
+            return False, error_msg % (self.resource_name, e.message), None
         except Exception as e:
-            logger.error(f"Unexpected error validating {self.resource_name}: {str(e)}", exc_info=True)
-            return False, f"Unexpected error validating {self.resource_name}: {str(e)}", None
+            error_msg = "Unexpected error validating %s: %s"
+            logger.error(error_msg, self.resource_name, str(e), exc_info=True)
+            return False, error_msg % (self.resource_name, str(e)), None
 
 
-def create_response(success: bool, data: Any = None, error: str = None) -> Dict[str, Any]:
+def create_response(success: bool, data: Any = None, error: Optional[str] = None) -> Dict[str, Any]:
     """Create a standardized response format for all creation operations.
     
     Args:
@@ -47,7 +53,7 @@ def create_response(success: bool, data: Any = None, error: str = None) -> Dict[
     Returns:
         A standardized response dictionary
     """
-    response = {"success": success}
+    response: Dict[str, Any] = {"success": success}
     
     if success and data is not None:
         if isinstance(data, str):

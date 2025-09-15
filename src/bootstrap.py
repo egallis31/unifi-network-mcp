@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Bootstrap utilities for the UniFi‑Network MCP server.
 
 This module consolidates:
@@ -11,13 +9,15 @@ Importing it early guarantees deterministic side‑effects (env + logging) and
 exposes a `load_config()` helper that the rest of the codebase can share.
 """
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+import importlib.resources
 import logging
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-import importlib.resources
 
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
@@ -81,7 +81,7 @@ class UniFiSettings:
 # Config loading  -----------------------------------------------------------
 # ---------------------------------------------------------------------------
 
-def load_config(path_override: str | Path | None = None) -> OmegaConf:
+def load_config(path_override: str | Path | None = None) -> Any:
     """Load YAML config with environment variable substitution.
 
     Order of precedence:
@@ -120,11 +120,13 @@ def load_config(path_override: str | Path | None = None) -> OmegaConf:
                     resolved_path = Path(str(config_file_ref))  # Convert Traversable to Path
                     logger.info("Using bundled default configuration: %s", resolved_path)
                 else:
-                    logger.error("Bundled default configuration file could not be accessed (not a file).")
+                    logger.error(
+                        "Bundled default configuration file could not be accessed (not a file)."
+                    )
                     raise SystemExit(3)  # Exit if bundled config isn't a file
             except (ModuleNotFoundError, FileNotFoundError, Exception) as e:
                 logger.error("Could not find or access bundled default configuration: %s", e)
-                raise SystemExit(3)  # Exit if bundled config cannot be loaded
+                raise SystemExit(3) from e  # Exit if bundled config cannot be loaded
 
     if resolved_path is None:
         # Should not be reachable if logic above is correct, but safeguard
@@ -145,4 +147,4 @@ def load_config(path_override: str | Path | None = None) -> OmegaConf:
         logger.debug("Applying env overrides to Unifi config: %s", unifi_env_overrides)
         cfg.unifi = OmegaConf.merge(cfg.unifi, unifi_env_overrides)
 
-    return cfg 
+    return cfg
