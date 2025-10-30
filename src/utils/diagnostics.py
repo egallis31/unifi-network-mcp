@@ -120,15 +120,11 @@ def _safe_log(message: str, *args) -> None:
     """
     try:
         _logger.info(message, *args)
-    except (ValueError, OSError) as e:
-        # Only ignore errors related to closed files during shutdown
-        # ValueError: "I/O operation on closed file"
-        # OSError: file descriptor errors
-        error_msg = str(e).lower()
-        if "closed" not in error_msg and "file" not in error_msg:
-            # If it's not a closed file error, we should know about it
-            # But still don't crash - diagnostics should never break the app
-            pass
+    except (ValueError, OSError):
+        # Silently ignore all logging errors during diagnostics
+        # Most commonly: ValueError("I/O operation on closed file") during shutdown
+        # Diagnostics should never break the application
+        pass
 
 
 def log_tool_call(
