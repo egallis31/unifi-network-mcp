@@ -1,14 +1,20 @@
 import logging
-import asyncio
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 from datetime import datetime, timedelta
+from aiounifi.errors import RequestError, ResponseError
 
 from aiounifi.models.api import ApiRequest
-from aiounifi.models.event import Event # Import Event model
-from aiounifi.models.dpi_restriction_app import DPIRestrictionApp # Import DPIApp model
-from aiounifi.models.dpi_restriction_group import DPIRestrictionGroup # Import DPIGroup model
-from .connection_manager import ConnectionManager
-from .client_manager import ClientManager # Needed for get_top_clients
+from aiounifi.models.event import Event  # Import Event model
+from aiounifi.models.dpi_restriction_app import (
+    DPIRestrictionApp  # Import DPIApp model
+)
+from aiounifi.models.dpi_restriction_group import (
+    DPIRestrictionGroup  # Import DPIGroup model
+)
+from src.managers.connection_manager import ConnectionManager
+from src.managers.client_manager import (
+    ClientManager  # Needed for get_top_clients
+)
 
 logger = logging.getLogger("unifi-network-mcp")
 
@@ -22,25 +28,40 @@ CACHE_PREFIX_STATS_ALERTS = "stats_alerts"
 class StatsManager:
     """Manages statistics retrieval from the Unifi Controller."""
 
-    def __init__(self, connection_manager: ConnectionManager, client_manager: ClientManager):
+    def __init__(
+        self,
+        connection_manager: ConnectionManager,
+        client_manager: ClientManager
+    ):
         """Initialize the Stats Manager.
 
         Args:
             connection_manager: The shared ConnectionManager instance.
-            client_manager: The ClientManager instance (needed for some stats methods).
+            client_manager: The ClientManager instance (needed for some stats
+                methods).
         """
         self._connection = connection_manager
         self._client_manager = client_manager
 
-    async def get_network_stats(self, duration_hours: int = 1) -> List[Dict[str, Any]]:
+    async def get_network_stats(
+        self, duration_hours: int = 1
+    ) -> List[Dict[str, Any]]:
         """Get network statistics (e.g., hourly site stats)."""
-        cache_key = f"{CACHE_PREFIX_STATS_NETWORK}_{duration_hours}_{self._connection.site}"
-        cached_data = self._connection.get_cached(cache_key, timeout=300)  # 5 minute cache
+        cache_key = (
+            f"{CACHE_PREFIX_STATS_NETWORK}_{duration_hours}_"
+            f"{self._connection.site}"
+        )
+        cached_data = self._connection.get_cached(
+            cache_key, timeout=300  # 5 minute cache
+        )
         if cached_data is not None:
             return cached_data
-            
+
         try:
-            start_time = int((datetime.now() - timedelta(hours=duration_hours)).timestamp() * 1000)
+            start_time = int(
+                (datetime.now() - timedelta(hours=duration_hours)).timestamp()
+                * 1000
+            )
             end_time = int(datetime.now().timestamp() * 1000)
 
             endpoint = "/stat/report/hourly.site"
@@ -60,21 +81,31 @@ class StatsManager:
             api_request = ApiRequest(method="post", path=endpoint, data=payload)
             response = await self._connection.request(api_request)
             result = response if isinstance(response, list) else []
-            self._connection._update_cache(cache_key, result, timeout=300)
+            self._connection.update_cache(cache_key, result, timeout=300)
             return result
-        except Exception as e:
-            logger.error(f"Error getting network stats: {e}")
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
+            logger.error("Error getting network stats: %s", e)
             return []
 
-    async def get_client_stats(self, client_mac: str, duration_hours: int = 1) -> List[Dict[str, Any]]:
+    async def get_client_stats(
+        self, client_mac: str, duration_hours: int = 1
+    ) -> List[Dict[str, Any]]:
         """Get statistics for a specific client."""
-        cache_key = f"{CACHE_PREFIX_STATS_CLIENT}_{client_mac}_{duration_hours}_{self._connection.site}"
-        cached_data = self._connection.get_cached(cache_key, timeout=300)  # 5 minute cache
+        cache_key = (
+            f"{CACHE_PREFIX_STATS_CLIENT}_{client_mac}_{duration_hours}_"
+            f"{self._connection.site}"
+        )
+        cached_data = self._connection.get_cached(
+            cache_key, timeout=300  # 5 minute cache
+        )
         if cached_data is not None:
             return cached_data
-            
+
         try:
-            start_time = int((datetime.now() - timedelta(hours=duration_hours)).timestamp() * 1000)
+            start_time = int(
+                (datetime.now() - timedelta(hours=duration_hours)).timestamp()
+                * 1000
+            )
             end_time = int(datetime.now().timestamp() * 1000)
 
             endpoint = "/stat/report/hourly.sta"
@@ -87,26 +118,37 @@ class StatsManager:
             api_request = ApiRequest(method="post", path=endpoint, data=payload)
             response = await self._connection.request(api_request)
             result = response if isinstance(response, list) else []
-            self._connection._update_cache(cache_key, result, timeout=300)
+            self._connection.update_cache(cache_key, result, timeout=300)
             return result
-        except Exception as e:
-            logger.error(f"Error getting stats for client {client_mac}: {e}")
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
+            logger.error("Error getting stats for client %s: %s", client_mac, e)
             return []
 
-    async def get_device_stats(self, device_mac: str, duration_hours: int = 1) -> List[Dict[str, Any]]:
+    async def get_device_stats(
+        self, device_mac: str, duration_hours: int = 1
+    ) -> List[Dict[str, Any]]:
         """Get statistics for a specific device."""
-        cache_key = f"{CACHE_PREFIX_STATS_DEVICE}_{device_mac}_{duration_hours}_{self._connection.site}"
-        cached_data = self._connection.get_cached(cache_key, timeout=300)  # 5 minute cache
+        cache_key = (
+            f"{CACHE_PREFIX_STATS_DEVICE}_{device_mac}_{duration_hours}_"
+            f"{self._connection.site}"
+        )
+        cached_data = self._connection.get_cached(
+            cache_key, timeout=300  # 5 minute cache
+        )
         if cached_data is not None:
             return cached_data
-            
+
         try:
-            start_time = int((datetime.now() - timedelta(hours=duration_hours)).timestamp() * 1000)
+            start_time = int(
+                (datetime.now() - timedelta(hours=duration_hours)).timestamp()
+                * 1000
+            )
             end_time = int(datetime.now().timestamp() * 1000)
 
             endpoint = "/stat/report/hourly.dev"
             payload = {
-                "attrs": ["rx_bytes", "tx_bytes", "bytes", "num_sta"],  # num_sta relevant for APs
+                "attrs": ["rx_bytes", "tx_bytes", "bytes", "num_sta"],
+                # num_sta relevant for APs
                 "mac": device_mac,
                 "start": start_time,
                 "end": end_time,
@@ -114,13 +156,15 @@ class StatsManager:
             api_request = ApiRequest(method="post", path=endpoint, data=payload)
             response = await self._connection.request(api_request)
             result = response if isinstance(response, list) else []
-            self._connection._update_cache(cache_key, result, timeout=300)
+            self._connection.update_cache(cache_key, result, timeout=300)
             return result
-        except Exception as e:
-            logger.error(f"Error getting stats for device {device_mac}: {e}")
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
+            logger.error("Error getting stats for device %s: %s", device_mac, e)
             return []
 
-    async def get_top_clients(self, duration_hours: int = 24, limit: int = 10) -> List[Dict[str, Any]]:
+    async def get_top_clients(
+        self, limit: int = 10
+    ) -> List[Dict[str, Any]]:
         """Get top clients by usage.
 
         Fallback approach: derive usage from current client objects when report
@@ -131,7 +175,26 @@ class StatsManager:
         if not online_clients:
             return []
 
-        clients_raw = [c.raw if hasattr(c, "raw") else c for c in online_clients]
+        clients_raw = []
+        for c in online_clients:
+            if hasattr(c, "raw"):
+                clients_raw.append(c.raw)
+            elif isinstance(c, dict):
+                clients_raw.append(c)
+            else:
+                # Try to convert Client object to dict-like access
+                client_dict = {}
+                for attr in ["mac", "name", "hostname", "rx_bytes", "tx_bytes",
+                            "bytes", "wired_rx_bytes", "wired-rx_bytes",
+                            "wired_tx_bytes", "wired-tx_bytes"]:
+                    try:
+                        val = getattr(c, attr, None)
+                        if val is not None:
+                            client_dict[attr] = val
+                    except (AttributeError, TypeError):
+                        pass
+                if client_dict:
+                    clients_raw.append(client_dict)
 
         aggregated_stats: List[Dict[str, Any]] = []
         def _safe_int(value: Any) -> int:
@@ -144,24 +207,28 @@ class StatsManager:
             except Exception:
                 return 0
 
-        for client in clients_raw:
-            mac = client.get("mac")
+        for client_data in clients_raw:
+            mac = client_data.get("mac")
             if not mac:
                 continue
 
-            # Prefer explicit total if present, otherwise sum rx/tx (wifi + wired)
-            rx = _safe_int(client.get("rx_bytes")) + _safe_int(
-                client.get("wired_rx_bytes") or client.get("wired-rx_bytes")
+            # Prefer explicit total if present, otherwise sum rx/tx
+            # (wifi + wired)
+            rx = _safe_int(client_data.get("rx_bytes")) + _safe_int(
+                client_data.get("wired_rx_bytes") or
+                client_data.get("wired-rx_bytes")
             )
-            tx = _safe_int(client.get("tx_bytes")) + _safe_int(
-                client.get("wired_tx_bytes") or client.get("wired-tx_bytes")
+            tx = _safe_int(client_data.get("tx_bytes")) + _safe_int(
+                client_data.get("wired_tx_bytes") or
+                client_data.get("wired-tx_bytes")
             )
-            total = _safe_int(client.get("bytes")) or (rx + tx)
+            total = _safe_int(client_data.get("bytes")) or (rx + tx)
 
             aggregated_stats.append(
                 {
                     "mac": mac,
-                    "name": client.get("name") or client.get("hostname", mac),
+                    "name": (client_data.get("name") or
+                            client_data.get("hostname", mac)),
                     "rx_bytes": rx,
                     "tx_bytes": tx,
                     "total_bytes": total,
@@ -169,52 +236,100 @@ class StatsManager:
             )
 
         # Sort by total bytes descending and return top N
-        sorted_clients = sorted(aggregated_stats, key=lambda x: x["total_bytes"], reverse=True)
+        sorted_clients = sorted(
+            aggregated_stats, key=lambda x: x["total_bytes"], reverse=True
+        )
         return sorted_clients[:limit]
 
-    async def get_dpi_stats(self) -> Dict[str, List[Any]]: # Return List[DPIRestrictionApp/Group]
+    async def get_dpi_stats(self) -> Dict[str, List[Any]]:
+        # Return List[DPIRestrictionApp/Group]
         """Get Deep Packet Inspection (DPI) statistics."""
         cache_key = f"{CACHE_PREFIX_STATS_DPI}_{self._connection.site}"
-        cached_data = self._connection.get_cached(cache_key, timeout=900)  # 15 minute cache
+        cached_data = self._connection.get_cached(
+            cache_key, timeout=900  # 15 minute cache
+        )
         if cached_data is not None:
             return cached_data
-            
-        if not await self._connection.ensure_connected() or not self._connection.controller:
+        if (not await self._connection.ensure_connected() or
+                not self._connection.controller):
             return {"applications": [], "categories": []}
 
         try:
             await self._connection.controller.dpi_apps.update()
             await self._connection.controller.dpi_groups.update()
 
-            dpi_apps: List[DPIRestrictionApp] = list(self._connection.controller.dpi_apps.values())
-            dpi_groups: List[DPIRestrictionGroup] = list(self._connection.controller.dpi_groups.values())
+            dpi_apps: List[DPIRestrictionApp] = list(
+                self._connection.controller.dpi_apps.values()
+            )
+            dpi_groups: List[DPIRestrictionGroup] = list(
+                self._connection.controller.dpi_groups.values()
+            )
             result = {
                 "applications": dpi_apps,
                 "categories": dpi_groups
             }
-            self._connection._update_cache(cache_key, result, timeout=900)
+            self._connection.update_cache(cache_key, result, timeout=900)
             return result
-        except Exception as e:
-            logger.error(f"Error getting DPI stats: {e}")
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
+            logger.error("Error getting DPI stats: %s", e)
             return {"applications": [], "categories": []}
 
-    async def get_alerts(self, include_archived: bool = False) -> List[Event]: # Changed return type
+    async def get_alerts(
+        self, include_archived: bool = False
+    ) -> List[Event]:  # Changed return type
         """Get alerts from the controller."""
-        cache_key = f"{CACHE_PREFIX_STATS_ALERTS}_{include_archived}_{self._connection.site}"
-        cached_data = self._connection.get_cached(cache_key, timeout=60)  # 1 minute cache
+        cache_key = (
+            f"{CACHE_PREFIX_STATS_ALERTS}_{include_archived}_"
+            f"{self._connection.site}"
+        )
+        cached_data = self._connection.get_cached(
+            cache_key, timeout=60  # 1 minute cache
+        )
         if cached_data is not None:
             return cached_data
-            
-        if not await self._connection.ensure_connected() or not self._connection.controller:
+        if (not await self._connection.ensure_connected() or
+                not self._connection.controller):
             return []
 
         try:
-            await self._connection.controller.alerts.update()
-            alerts: List[Event] = list(self._connection.controller.alerts.values())
-            if not include_archived:
-                alerts = [a for a in alerts if not a.raw.get("archived", False)]
-            self._connection._update_cache(cache_key, alerts, timeout=60)
+            # Note: aiounifi doesn't have a dedicated alerts endpoint
+            # Alerts are events with specific keys. We need to make an API call
+            # to get events and filter for alert-type events
+            from aiounifi.models.api import ApiRequest
+
+            # Get recent events which may include alert-type events
+            end_time = int(datetime.now().timestamp() * 1000)
+            start_time = end_time - (24 * 60 * 60 * 1000)  # Last 24 hours
+
+            api_request = ApiRequest(
+                method="get",
+                path=f"/stat/event?start={start_time}&end={end_time}"
+            )
+            response = await self._connection.request(api_request)
+            events_data = response if isinstance(response, list) else []
+
+            # Convert to Event objects and filter for alert-like events
+            alerts = []
+            alert_keywords = [
+                "Alert", "Warning", "Error", "Failed", "Disconnected",
+                "Lost_Contact", "Overheat", "Overload"
+            ]
+
+            for event_data in events_data:
+                try:
+                    event = Event(event_data)
+                    # Check if this looks like an alert/warning event
+                    event_key = event_data.get("key", "")
+                    if any(keyword in event_key for keyword in alert_keywords):
+                        if (include_archived or
+                                not event_data.get("archived", False)):
+                            alerts.append(event)
+                except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as event_error:
+                    logger.debug("Skipping invalid event data: %s", event_error)
+                    continue
+
+            self._connection.update_cache(cache_key, alerts, timeout=60)
             return alerts
-        except Exception as e:
-            logger.error(f"Error getting alerts: {e}")
-            return [] 
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
+            logger.error("Error getting alerts: %s", e)
+            return []

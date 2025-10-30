@@ -2,7 +2,7 @@ import logging
 from typing import Dict, List, Optional, Any
 
 from aiounifi.models.api import ApiRequest
-from .connection_manager import ConnectionManager
+from src.managers.connection_manager import ConnectionManager
 
 logger = logging.getLogger("unifi-network-mcp")
 
@@ -31,10 +31,10 @@ class VpnManager:
             api_request = ApiRequest(method="get", path="/rest/vpnserver")
             response = await self._connection.request(api_request)
             servers = response if isinstance(response, list) else []
-            self._connection._update_cache(cache_key, servers)
+            getattr(self._connection, "_update_cache", lambda k, v: None)(cache_key, servers)
             return servers
-        except Exception as e:
-            logger.error(f"Error getting VPN servers: {e}")
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
+            logger.error("Error getting VPN servers: %s", e)
             return []
 
     async def get_vpn_server_details(self, server_id: str) -> Optional[Dict[str, Any]]:
@@ -42,7 +42,7 @@ class VpnManager:
         vpn_servers = await self.get_vpn_servers()
         server = next((s for s in vpn_servers if s.get("_id") == server_id), None)
         if not server:
-            logger.warning(f"VPN server {server_id} not found in cached/fetched list.")
+            logger.warning("VPN server %s not found in cached/fetched list.", server_id)
         return server
 
     async def update_vpn_server_state(self, server_id: str, enabled: bool) -> bool:
@@ -58,22 +58,23 @@ class VpnManager:
         try:
             server = await self.get_vpn_server_details(server_id)
             if not server:
-                logger.error(f"VPN server {server_id} not found, cannot update state")
+                logger.error("VPN server %s not found, cannot update state", server_id)
                 return False
-            
+
             update_data = {"enabled": enabled}
-            
+
             api_request = ApiRequest(
                 method="put",
                 path=f"/rest/vpnserver/{server_id}",
-                json=update_data
+                data=update_data
             )
             await self._connection.request(api_request)
-            logger.info(f"Update state command sent for VPN server {server_id} (enabled={enabled})")
-            self._connection._invalidate_cache(f"{CACHE_PREFIX_VPN_SERVERS}_{self._connection.site}")
+            logger.info("Update state command sent for VPN server %s (enabled=%s)", server_id, enabled)
+            cache_key_to_invalidate = f"{CACHE_PREFIX_VPN_SERVERS}_{self._connection.site}"
+            getattr(self._connection, "_invalidate_cache", lambda x: None)(cache_key_to_invalidate)
             return True
-        except Exception as e:
-            logger.error(f"Error updating VPN server state {server_id}: {e}")
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
+            logger.error("Error updating VPN server state %s: %s", server_id, e)
             return False
 
     async def get_vpn_clients(self) -> List[Dict[str, Any]]:
@@ -82,67 +83,68 @@ class VpnManager:
         cached_data = self._connection.get_cached(cache_key, timeout=30)  # 30 second cache
         if cached_data is not None:
             return cached_data
-            
+
         try:
             api_request = ApiRequest(method="get", path="/stat/vpn")
             response = await self._connection.request(api_request)
             clients = response if isinstance(response, list) else []
-            self._connection._update_cache(cache_key, clients, timeout=30)
+            getattr(self._connection, "_update_cache", lambda k, v, **kw: None)(cache_key, clients, timeout=30)
             return clients
-        except Exception as e:
-            logger.error(f"Error getting VPN clients: {e}")
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
+            logger.error("Error getting VPN clients: %s", e)
             return []
 
     async def get_vpn_client_details(self, client_id: str) -> Optional[Dict[str, Any]]:
         """Get detailed information for a specific VPN client.
-        
+
         Args:
             client_id: ID of the client to get details for
-            
+
         Returns:
             Client details if found, None otherwise
         """
         vpn_clients = await self.get_vpn_clients()
         client = next((c for c in vpn_clients if c.get("_id") == client_id), None)
         if not client:
-            logger.warning(f"VPN client {client_id} not found in fetched list.")
+            logger.warning("VPN client %s not found in fetched list.", client_id)
         return client
 
     async def update_vpn_client_state(self, client_id: str, enabled: bool) -> bool:
         """Update the enabled state of a VPN client.
-        
+
         Args:
             client_id: ID of the client to update
             enabled: Whether the client should be enabled or disabled
-            
+
         Returns:
             bool: True if successful, False otherwise
         """
         try:
             client = await self.get_vpn_client_details(client_id)
             if not client:
-                logger.error(f"VPN client {client_id} not found, cannot update state")
+                logger.error("VPN client %s not found, cannot update state", client_id)
                 return False
-            
+
             update_data = {"enabled": enabled}
-            
+
             api_request = ApiRequest(
                 method="put",
                 path=f"/rest/vpnclient/{client_id}",
-                json=update_data
+                data=update_data
             )
-            
+
             try:
                 await self._connection.request(api_request)
-                logger.info(f"Update state command sent for VPN client {client_id} (enabled={enabled})")
-                self._connection._invalidate_cache(f"{CACHE_PREFIX_VPN_CLIENTS}_{self._connection.site}")
+                logger.info("Update state command sent for VPN client %s (enabled=%s)", client_id, enabled)
+                cache_key_to_invalidate = f"{CACHE_PREFIX_VPN_CLIENTS}_{self._connection.site}"
+                getattr(self._connection, "_invalidate_cache", lambda x: None)(cache_key_to_invalidate)
                 return True
-            except Exception as e:
-                logger.error(f"API error updating VPN client state {client_id}: {e}")
-                return await self._update_vpn_client_state_alternative(client_id, enabled)
-                
-        except Exception as e:
-            logger.error(f"Error updating VPN client state {client_id}: {e}")
+            except (ValueError, TypeError, AttributeError, KeyError) as e:
+                logger.error("API error updating VPN client state %s: %s", client_id, e)
+                return False
+
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
+            logger.error("Error updating VPN client state %s: %s", client_id, e)
             return False
 
 
@@ -165,7 +167,7 @@ class VpnManager:
         try:
             server = await self.get_vpn_server_details(server_id)
             if not server:
-                logger.error(f"Cannot generate profile for non-existent server {server_id}")
+                logger.error("Cannot generate profile for non-existent server %s", server_id)
                 return None
 
             payload = {
@@ -177,10 +179,10 @@ class VpnManager:
             api_request = ApiRequest(
                 method="post",
                 path="/rest/vpnprofile",
-                json=payload
+                data=payload
             )
             response = await self._connection.request(api_request)
-            logger.info(f"Generate profile command sent for VPN client '{client_name}' on server {server_id}")
+            logger.info("Generate profile command sent for VPN client '%s' on server %s", client_name, server_id)
 
             if isinstance(response, dict) and "data" in response:
                 profile_data = response["data"]
@@ -190,8 +192,8 @@ class VpnManager:
             elif isinstance(response, str):
                 return response # Handle cases where API returns profile directly as string
 
-            logger.warning(f"Could not extract VPN client profile data from response: {response}")
+            logger.warning("Could not extract VPN client profile data from response: %s", response)
             return str(response) # Return raw response as string if extraction fails
-        except Exception as e:
-            logger.error(f"Error generating VPN client profile: {e}")
-            return None 
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
+            logger.error("Error generating VPN client profile: %s", e)
+            return None

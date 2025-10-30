@@ -6,13 +6,14 @@ PORT_FORWARD_SCHEMA = {
     "type": "object",
     "required": ["name", "dst_port", "fwd_port", "fwd_ip"],
     "properties": {
-        "name": {"type": "string", "description": "Descriptive name for the port forwarding rule"},
+        "name": {"type": "string", "description": "Descriptive name for the port forwarding rule"
+                              },
         "dst_port": {"type": "string", "description": "Destination port (external port)"},
         "fwd_port": {"type": "string", "description": "Port to forward to (internal port)"},
         "fwd_ip": {"type": "string", "description": "IP address to forward to"},
         "protocol": {
-            "type": "string", 
-            "enum": ["tcp", "udp", "tcp_udp"], 
+            "type": "string",
+            "enum": ["tcp", "udp", "tcp_udp"],
             "default": "tcp_udp",
             "description": "Network protocol"
         },
@@ -31,33 +32,48 @@ for prop in PORT_FORWARD_UPDATE_SCHEMA.get("properties", {}):
 TRAFFIC_ROUTE_SCHEMA = {
     "type": "object",
     # Keep name/interface required based on POST API errors
-    # Added network_id and target_devices as required based on API validation error for create
-    "required": ["name", "interface", "matching_target", "network_id", "target_devices"], 
+    # Added network_id and target_devices as required based on API validation
+    # error for create
+    "required": ["name", "interface", "matching_target", "network_id",
+                 "target_devices"],
     "properties": {
         "name": {"type": "string", "description": "Descriptive name for the route"},
-        "interface": {"type": "string", "description": "Interface name (e.g., 'wan', 'wan2', 'vpnclient0') required for creation"},
+        "interface": {"type": "string",
+                      "description": "Interface name (e.g., 'wan', 'wan2', "
+                                     "'vpnclient0') required for creation"},
         "description": {"type": "string", "description": "Additional description"},
-        "enabled": {"type": "boolean", "default": True, "description": "Whether route is enabled initially"},
+        "enabled": {"type": "boolean", "default": True,
+                    "description": "Whether route is enabled initially"},
         "matching_target": {
             "type": "string",
             "description": "Specifies the destination/source type",
-            "enum": ["INTERNET", "DOMAIN", "IP", "REGION"] 
+            "enum": ["INTERNET", "DOMAIN", "IP", "REGION"]
         },
         # network_id is now required for creation according to API errors
-        "network_id": {"type": "string", "description": "Network ID (LAN/VLAN) the route applies to (Required for creation)"},
+        "network_id": {"type": "string",
+                       "description": "Network ID (LAN/VLAN) the route applies "
+                                      "to (Required for creation)"},
         # target_devices is now required for creation according to API errors
-        # It specifies WHICH devices/networks on the source network_id are affected
+        # It specifies WHICH devices/networks on the source network_id are
+        # affected
         "target_devices": {
             "type": "array",
-            "description": "List of client devices or networks the route applies to (Required, cannot be empty). Defines the source scope within network_id.",
-            "minItems": 1, # Explicitly require at least one item based on API error
+            "description": "List of client devices or networks the route "
+                           "applies to (Required, cannot be empty). Defines "
+                           "the source scope within network_id.",
+            "minItems": 1,  # Explicitly require at least one item based on
+                           # API error
             "items": {
                 "type": "object",
                 "required": ["type"], # Type is always needed
                 "properties": {
                     # client_mac OR network_id should be present based on type
-                    "client_mac": {"type": "string", "format": "mac", "description": "MAC address of the client (Required if type is CLIENT)"},
-                    "network_id": {"type": "string", "description": "Network ID if type is NETWORK (Required if type is NETWORK)"},
+                    "client_mac": {"type": "string", "format": "mac", "description": "MAC address of the client (Required if type is"
+                                          " CLIENT)"
+                                          },
+                    "network_id": {"type": "string", "description": "Network ID if type is NETWORK (Required if type is"
+                                          " NETWORK)"
+                                          },
                     "type": {"type": "string", "enum": ["CLIENT", "NETWORK"], "description": "Type of target: CLIENT or NETWORK"}
                 },
                 "allOf": [ # Add conditional requirements for client_mac/network_id
@@ -74,7 +90,7 @@ TRAFFIC_ROUTE_SCHEMA = {
         },
         # Other fields matching TypedTrafficRoute model (made optional here, API validates)
         "domains": {
-            "type": "array", 
+            "type": "array",
             "description": "List of domains with ports (used with matching_target: DOMAIN)",
             "items": {
                 "type": "object",
@@ -86,7 +102,7 @@ TRAFFIC_ROUTE_SCHEMA = {
             }
         },
         "ip_addresses": {
-            "type": "array", 
+            "type": "array",
             "description": "List of IPs/subnets with ports (used with matching_target: IP)",
             "items": {
                  "type": "object",
@@ -99,7 +115,7 @@ TRAFFIC_ROUTE_SCHEMA = {
             }
         },
         "ip_ranges": {
-            "type": "array", 
+            "type": "array",
             "description": "List of IP ranges",
             "items": {
                 "type": "object",
@@ -111,7 +127,8 @@ TRAFFIC_ROUTE_SCHEMA = {
             }
         },
         "regions": {"type": "array", "items": {"type": "string"}, "description": "List of regions (used with matching_target: REGION)"},
-        "kill_switch_enabled": {"type": "boolean", "default": False, "description": "Whether kill switch is enabled (for VPNs)"},
+        "kill_switch_enabled": {"type": "boolean", "default": False, "description": "Whether kill switch is enabled (for VPNs)"
+                              },
         "next_hop": {"type": "string", "description": "Next hop IP address (advanced routing)"}
     },
 }
@@ -120,7 +137,7 @@ TRAFFIC_ROUTE_SCHEMA = {
 TRAFFIC_ROUTE_UPDATE_SCHEMA = copy.deepcopy(TRAFFIC_ROUTE_SCHEMA)
 # Remove fields not settable via update or missing from GET/PUT model
 TRAFFIC_ROUTE_UPDATE_SCHEMA["properties"].pop("interface", None)
-TRAFFIC_ROUTE_UPDATE_SCHEMA["properties"].pop("name", None) 
+TRAFFIC_ROUTE_UPDATE_SCHEMA["properties"].pop("name", None)
 # Updates are partial, so top-level fields aren't required for the UPDATE operation itself
 # However, the items within arrays might still have requirements (handled by schema)
 TRAFFIC_ROUTE_UPDATE_SCHEMA.pop("required", None)
@@ -208,7 +225,9 @@ NETWORK_SCHEMA = {
         "purpose": {"type": "string", "enum": ["corporate", "guest", "wan", "vlan-only"], "description": "Network purpose/type"},
         "vlan_enabled": {"type": "boolean", "default": False, "description": "Whether VLAN is enabled"},
         "vlan": {"type": "string", "description": "VLAN ID (if VLAN is enabled)"},
-        "ip_subnet": {"type": "string", "description": "IP subnet in CIDR notation (e.g., '192.168.1.0/24')"},
+        "ip_subnet": {"type": "string", "description": "IP subnet in CIDR notation (e.g.,"
+                              " '192.168.1.0/24')"
+                              },
         "dhcp_enabled": {"type": "boolean", "default": True, "description": "Whether DHCP is enabled"},
         "dhcp_start": {"type": "string", "description": "Start of DHCP range"},
         "dhcp_stop": {"type": "string", "description": "End of DHCP range"},
@@ -249,14 +268,18 @@ FIREWALL_POLICY_SCHEMA = {
     "required": ["name", "ruleset", "action", "rule_index"],
     "properties": {
         "name": {"type": "string", "description": "Name of the firewall policy"},
-        "ruleset": {"type": "string", "description": "The firewall ruleset (e.g., 'WAN_IN', 'LAN_OUT')"},
+        "ruleset": {"type": "string", "description": "The firewall ruleset (e.g., 'WAN_IN', 'LAN_OUT')"
+                              },
         "action": {"type": "string", "enum": ["accept", "drop", "reject"], "description": "Policy action"},
-        "rule_index": {"type": "integer", "description": "Rule index/order (lower numbers process first)"},
+        "rule_index": {"type": "integer", "description": "Rule index/order (lower numbers process first)"
+                              },
         "protocol": {"type": "string", "enum": ["all", "tcp", "udp", "icmp"], "default": "all", "description": "Protocol"},
         "src_address": {"type": "string", "description": "Source address or CIDR"},
         "dst_address": {"type": "string", "description": "Destination address or CIDR"},
-        "src_port": {"type": "string", "description": "Source port or range (e.g., '80' or '80-443')"},
-        "dst_port": {"type": "string", "description": "Destination port or range (e.g., '80' or '80-443')"},
+        "src_port": {"type": "string", "description": "Source port or range (e.g., '80' or '80-443')"
+                              },
+        "dst_port": {"type": "string", "description": "Destination port or range (e.g., '80' or '80-443')"
+                              },
         "enabled": {"type": "boolean", "default": True, "description": "Whether the policy is enabled"},
         "description": {"type": "string", "description": "Description of the rule"}
     }
@@ -276,22 +299,28 @@ FIREWALL_POLICY_CREATE_SCHEMA = {
     "properties": {
         "name": {"type": "string", "minLength": 1, "description": "Name of the firewall policy.", "examples": ["Block Xbox LAN Out"]},
         "ruleset": {
-            "type": "string", 
+            "type": "string",
             "enum": [ # Based on common UniFi rulesets, adjust if needed
-                "WAN_IN", "WAN_OUT", "WAN_LOCAL", 
-                "LAN_IN", "LAN_OUT", "LAN_LOCAL", 
+                "WAN_IN", "WAN_OUT", "WAN_LOCAL",
+                "LAN_IN", "LAN_OUT", "LAN_LOCAL",
                 "GUEST_IN", "GUEST_OUT", "GUEST_LOCAL",
                 "VPN_IN", "VPN_OUT", "VPN_LOCAL"
-            ], 
+            ],
             "description": "Target firewall ruleset.",
             "examples": ["LAN_OUT"]
         },
-        "action": {"type": "string", "enum": ["accept", "drop", "reject"], "description": "Action for matched traffic (must be lowercase).", "examples": ["drop"]},
-        "index": {"type": "integer", "minimum": 1, "description": "Rule priority index (lower numbers execute first). API uses 'index' for V2.", "examples": [2010]},
-        "enabled": {"type": "boolean", "default": True, "description": "Whether the rule is enabled upon creation.", "examples": [True]},
+        "action": {"type": "string", "enum": ["accept", "drop", "reject"], "description": "Action for matched traffic (must be lowercase)."
+                              , "examples": ["drop"]},
+        "index": {"type": "integer", "minimum": 1, "description": "Rule priority index (lower numbers execute first)."
+                              " API uses 'index' for V2."
+                              , "examples": [2010]},
+        "enabled": {"type": "boolean", "default": True, "description": "Whether the rule is enabled upon creation."
+                              , "examples": [True]},
         "description": {"type": "string", "default": "", "description": "Optional description for the rule.", "examples": ["Block specific Xbox device from WAN"]},
         "logging": {"type": "boolean", "default": False, "description": "Enable logging for matched traffic.", "examples": [True]},
-        "protocol": {"type": "string", "default": "all", "description": "Network protocol (e.g., 'tcp', 'udp', 'icmp', 'all').", "examples": ["all"]},
+        "protocol": {"type": "string", "default": "all", "description": "Network protocol (e.g., 'tcp', 'udp', 'icmp',"
+                              " 'all')."
+                              , "examples": ["all"]},
         "connection_state_type": {"type": "string", "enum": ["inclusive", "exclusive"], "default": "inclusive", "description": "How connection states are matched.", "examples": ["inclusive"]},
         "connection_states": {
             "type": "array",
@@ -302,56 +331,82 @@ FIREWALL_POLICY_CREATE_SCHEMA = {
         },
         "source": { # Structure based on FirewallPolicyEndpoint TypedDict
             "type": "object",
-            "required": ["match_opposite_ports", "matching_target", "port_matching_type", "zone_id"],
+            "required": [
+                "match_opposite_ports",
+                "matching_target",
+                "port_matching_type",
+                "zone_id"
+            ],
             "properties": {
                 "match_opposite_ports": {"type": "boolean", "default": False},
                 "matching_target": {"type": "string", "enum": ["zone", "client_macs", "network_id", "ip_group_id", "region"], "description": "How source is matched.", "examples": ["client_macs"]},
                 "port_matching_type": {"type": "string", "enum": ["any", "single_port", "port_range"], "default": "any", "description": "How ports are matched.", "examples": ["any"]},
-                "zone_id": {"type": "string", "description": "Source zone ID (e.g., 'trusted', 'guest', 'iot').", "examples": ["trusted"]},
-                "client_macs": {"type": "array", "items": {"type": "string", "format": "mac"}, "description": "Required if matching_target is 'client_macs'.", "examples": [["4c:3b:df:2c:c8:c6"]]}, 
-                "network_id": {"type": "string", "description": "Required if matching_target is 'network_id'."}, 
-                "ip_group_id": {"type": "string", "description": "Required if matching_target is 'ip_group_id'."}, 
-                "port": {"type": "string", "description": "Required if port_matching_type is 'single_port'."}, 
-                "port_range_start": {"type": "string", "description": "Required if port_matching_type is 'port_range'."}, 
-                "port_range_end": {"type": "string", "description": "Required if port_matching_type is 'port_range'."}, 
-                "region": {"type": "string", "description": "Required if matching_target is 'region'."}, 
+                "zone_id": {"type": "string", "description": "Source zone ID (e.g., 'trusted', 'guest', 'iot')."
+                                      , "examples": ["trusted"]},
+                "client_macs": {"type": "array", "items": {"type": "string", "format": "mac"}, "description": "Required if matching_target is 'client_macs'.", "examples": [["4c:3b:df:2c:c8:c6"]]},
+                "network_id": {"type": "string", "description": "Required if matching_target is 'network_id'."
+                                      },
+                "ip_group_id": {"type": "string", "description": "Required if matching_target is 'ip_group_id'."
+                                      },
+                "port": {"type": "string", "description": "Required if port_matching_type is 'single_port'."
+                                      },
+                "port_range_start": {"type": "string", "description": "Required if port_matching_type is 'port_range'."
+                                      },
+                "port_range_end": {"type": "string", "description": "Required if port_matching_type is 'port_range'."
+                                      },
+                "region": {"type": "string", "description": "Required if matching_target is 'region'."},
             },
             "additionalProperties": True # Allow other potential fields
         },
         "destination": { # Structure based on FirewallPolicyEndpoint TypedDict
             "type": "object",
-            "required": ["match_opposite_ports", "matching_target", "port_matching_type", "zone_id"],
+            "required": [
+                "match_opposite_ports",
+                "matching_target",
+                "port_matching_type",
+                "zone_id"
+            ],
             "properties": {
                 "match_opposite_ports": {"type": "boolean", "default": False},
                 "matching_target": {"type": "string", "enum": ["zone", "client_macs", "network_id", "ip_group_id", "region"], "description": "How destination is matched.", "examples": ["zone"]},
                 "port_matching_type": {"type": "string", "enum": ["any", "single_port", "port_range"], "default": "any", "description": "How ports are matched.", "examples": ["any"]},
-                "zone_id": {"type": "string", "description": "Destination zone ID (e.g., 'wan', 'trusted', 'guest').", "examples": ["wan"]},
+                "zone_id": {"type": "string", "description": "Destination zone ID (e.g., 'wan', 'trusted',"
+                                      " 'guest')."
+                                      , "examples": ["wan"]},
                 "client_macs": {"type": "array", "items": {"type": "string", "format": "mac"}, "description": "Required if matching_target is 'client_macs'."},
-                "network_id": {"type": "string", "description": "Required if matching_target is 'network_id'."},
-                "ip_group_id": {"type": "string", "description": "Required if matching_target is 'ip_group_id'."},
-                "port": {"type": "string", "description": "Required if port_matching_type is 'single_port'."},
-                "port_range_start": {"type": "string", "description": "Required if port_matching_type is 'port_range'."},
-                "port_range_end": {"type": "string", "description": "Required if port_matching_type is 'port_range'."},
+                "network_id": {"type": "string", "description": "Required if matching_target is 'network_id'."
+                                      },
+                "ip_group_id": {"type": "string", "description": "Required if matching_target is 'ip_group_id'."
+                                      },
+                "port": {"type": "string", "description": "Required if port_matching_type is 'single_port'."
+                                      },
+                "port_range_start": {"type": "string", "description": "Required if port_matching_type is 'port_range'."
+                                      },
+                "port_range_end": {"type": "string", "description": "Required if port_matching_type is 'port_range'."
+                                      },
                 "region": {"type": "string", "description": "Required if matching_target is 'region'."},
             },
             "additionalProperties": True # Allow other potential fields
         },
         "icmp_typename": {"type": "string", "description": "ICMP type name (if protocol is 'icmp')."},
-        "icmp_v6_typename": {"type": "string", "description": "ICMPv6 type name (if protocol is 'icmpv6')."},
+        "icmp_v6_typename": {"type": "string", "description": "ICMPv6 type name (if protocol is 'icmpv6')."
+                              },
         "ip_version": {"type": "string", "enum": ["ipv4", "ipv6", "both"], "default": "ipv4", "description": "IP version to apply the rule to.", "examples": ["ipv4"]},
         "match_ip_sec": {"type": "boolean", "default": False, "description": "Match IPSec traffic.", "examples": [False]},
         "match_opposite_protocol": {"type": "boolean", "default": False, "description": "Match opposite protocol.", "examples": [False]},
         "schedule": { # Placeholder for schedule object - define if needed
-            "type": "object", 
+            "type": "object",
             "properties": {
                  "mode": {"type": "string", "enum": ["always", "specific_time", "disabled"]},
-                 "repeat_on_days": {"type": "array", "items": {"type": "string"}}, # e.g., ["mon", "tue"] 
+                 "repeat_on_days": {"type": "array", "items": {"type": "string"}}, # e.g., ["mon", "tue"]
                  "time_all_day": {"type": "boolean"},
                  # Add time_start, time_end if needed for specific_time
             },
             "description": "Rule schedule configuration (optional)."
         },
-        "create_allow_respond": {"type": "boolean", "default": False, "description": "Whether to create an allow respond rule automatically.", "examples": [False]},
+        "create_allow_respond": {"type": "boolean", "default": False, "description": "Whether to create an allow respond rule"
+                              " automatically."
+                              , "examples": [False]},
     },
     "additionalProperties": True # Allow extra fields initially, tighten later
 }
@@ -362,7 +417,9 @@ QOS_RULE_SCHEMA = {
     "required": ["name", "interface", "direction", "bandwidth_limit_kbps"],
     "properties": {
         "name": {"type": "string", "description": "Descriptive name for the QoS rule"},
-        "interface": {"type": "string", "description": "Network interface the rule applies to (e.g., 'WAN', 'LAN')"},
+        "interface": {"type": "string", "description": "Network interface the rule applies to (e.g.,"
+                              " 'WAN', 'LAN')"
+                              },
         "direction": {"type": "string", "enum": ["upload", "download"], "description": "Direction of traffic affected"},
         "bandwidth_limit_kbps": {"type": "integer", "description": "Bandwidth limit in Kilobits per second"},
         "target_ip_address": {"type": "string", "description": "Specific IP address to target"},
@@ -418,7 +475,9 @@ QOS_RULE_SIMPLE_SCHEMA = {
                     "enum": ["ip", "subnet"],
                     "description": "Selector kind: single IP address or subnet CIDR"
                 },
-                "value": {"type": "string", "description": "Selector value (e.g., '192.168.1.50' or '192.168.1.0/24')"}
+                "value": {"type": "string", "description": "Selector value (e.g., '192.168.1.50' or"
+                                      " '192.168.1.0/24')"
+                                      }
             }
         }
     }
@@ -487,7 +546,8 @@ PORT_FORWARD_SIMPLE_SCHEMA = {
         "to_ip",
     ],
     "properties": {
-        "name": {"type": "string", "description": "User-friendly name of the port forward rule"},
+        "name": {"type": "string", "description": "User-friendly name of the port forward rule"
+                              },
         "ext_port": {
             "type": "string",
             "description": "External (destination) port or range, e.g. '80' or '10000-10010'"
@@ -514,7 +574,7 @@ PORT_FORWARD_SIMPLE_SCHEMA = {
 
 class UniFiResourceRegistry:
     """Registry for UniFi Network resource schemas and validators."""
-    
+
     _schemas = {
         "port_forward": PORT_FORWARD_SCHEMA,
         "port_forward_update": PORT_FORWARD_UPDATE_SCHEMA,
@@ -535,8 +595,8 @@ class UniFiResourceRegistry:
         "qos_rule_simple": QOS_RULE_SIMPLE_SCHEMA,
         "port_forward_simple": PORT_FORWARD_SIMPLE_SCHEMA
     }
-    
+
     @classmethod
     def get_schema(cls, resource_type: str) -> Dict[str, Any]:
         """Get JSON schema for a resource type."""
-        return cls._schemas.get(resource_type, {}) 
+        return cls._schemas.get(resource_type, {})

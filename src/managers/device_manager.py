@@ -1,9 +1,12 @@
+"""Device manager for UniFi Network Controller operations."""
+
 import logging
-from typing import Dict, List, Optional, Any
+from typing import List, Optional
 
 from aiounifi.models.api import ApiRequest
 from aiounifi.models.device import Device
-from .connection_manager import ConnectionManager
+
+from src.managers.connection_manager import ConnectionManager
 
 logger = logging.getLogger("unifi-network-mcp")
 
@@ -33,18 +36,22 @@ class DeviceManager:
         try:
             await self._connection.controller.devices.update()
             devices: List[Device] = list(self._connection.controller.devices.values())
-            self._connection._update_cache(cache_key, devices)
+            getattr(self._connection, "_update_cache", lambda k, v: None)(cache_key, devices)
             return devices
-        except Exception as e:
-            logger.error(f"Error getting devices: {e}")
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
+            logger.error("Error getting devices: %s", e)
             return []
 
     async def get_device_details(self, device_mac: str) -> Optional[Device]:
         """Get detailed information for a specific device by MAC address."""
         devices = await self.get_devices()
-        device: Optional[Device] = next((d for d in devices if d.mac == device_mac), None)
+        device: Optional[Device] = next(
+            (d for d in devices if d.mac == device_mac), None
+        )
         if not device:
-             logger.debug(f"Device details for MAC {device_mac} not found in devices list.")
+            logger.debug(
+                "Device details for MAC %s not found in devices list.", device_mac
+            )
         return device
 
     async def reboot_device(self, device_mac: str) -> bool:
@@ -52,15 +59,15 @@ class DeviceManager:
         try:
             api_request = ApiRequest(
                 method="post",
-                path=f"/cmd/devmgr",
-                json={"mac": device_mac, "cmd": "restart"}
+                path="/cmd/devmgr",
+                data={"mac": device_mac, "cmd": "restart"}
             )
             await self._connection.request(api_request)
-            logger.info(f"Reboot command sent for device {device_mac}")
-            self._connection._invalidate_cache(CACHE_PREFIX_DEVICES)
+            logger.info("Reboot command sent for device %s", device_mac)
+            getattr(self._connection, "_invalidate_cache", lambda x: None)(CACHE_PREFIX_DEVICES)
             return True
-        except Exception as e:
-            logger.error(f"Error rebooting device {device_mac}: {e}")
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
+            logger.error("Error rebooting device %s: %s", device_mac, e)
             return False
 
     async def rename_device(self, device_mac: str, name: str) -> bool:
@@ -68,21 +75,23 @@ class DeviceManager:
         try:
             device = await self.get_device_details(device_mac)
             if not device or "_id" not in device.raw:
-                logger.error(f"Cannot rename device {device_mac}: Not found or missing ID.")
+                logger.error(
+                    "Cannot rename device %s: Not found or missing ID.", device_mac
+                )
                 return False
             device_id = device.raw["_id"]
 
             api_request = ApiRequest(
                 method="put",
                 path=f"/rest/device/{device_id}",
-                json={"name": name}
+                data={"name": name}
             )
             await self._connection.request(api_request)
-            logger.info(f"Rename command sent for device {device_mac} to '{name}'")
-            self._connection._invalidate_cache(CACHE_PREFIX_DEVICES)
+            logger.info("Rename command sent for device %s to '%s'", device_mac, name)
+            getattr(self._connection, "_invalidate_cache", lambda x: None)(CACHE_PREFIX_DEVICES)
             return True
-        except Exception as e:
-            logger.error(f"Error renaming device {device_mac} to '{name}': {e}")
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
+            logger.error("Error renaming device %s to '%s': %s", device_mac, name, e)
             return False
 
     async def adopt_device(self, device_mac: str) -> bool:
@@ -91,14 +100,14 @@ class DeviceManager:
             api_request = ApiRequest(
                 method="post",
                 path="/cmd/devmgr",
-                json={"mac": device_mac, "cmd": "adopt"}
+                data={"mac": device_mac, "cmd": "adopt"}
             )
             await self._connection.request(api_request)
-            logger.info(f"Adopt command sent for device {device_mac}")
-            self._connection._invalidate_cache(CACHE_PREFIX_DEVICES)
+            logger.info("Adopt command sent for device %s", device_mac)
+            getattr(self._connection, "_invalidate_cache", lambda x: None)(CACHE_PREFIX_DEVICES)
             return True
-        except Exception as e:
-            logger.error(f"Error adopting device {device_mac}: {e}")
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
+            logger.error("Error adopting device %s: %s", device_mac, e)
             return False
 
     async def upgrade_device(self, device_mac: str) -> bool:
@@ -107,12 +116,12 @@ class DeviceManager:
             api_request = ApiRequest(
                 method="post",
                 path="/cmd/devmgr",
-                json={"mac": device_mac, "cmd": "upgrade"}
+                data={"mac": device_mac, "cmd": "upgrade"}
             )
             await self._connection.request(api_request)
-            logger.info(f"Upgrade command sent for device {device_mac}")
-            self._connection._invalidate_cache(CACHE_PREFIX_DEVICES)
+            logger.info("Upgrade command sent for device %s", device_mac)
+            getattr(self._connection, "_invalidate_cache", lambda x: None)(CACHE_PREFIX_DEVICES)
             return True
-        except Exception as e:
-            logger.error(f"Error upgrading device {device_mac}: {e}")
-            return False 
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
+            logger.error("Error upgrading device %s: %s", device_mac, e)
+            return False

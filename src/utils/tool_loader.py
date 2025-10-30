@@ -2,6 +2,7 @@ import importlib
 import logging
 import pkgutil
 from types import ModuleType
+from aiounifi.errors import RequestError, ResponseError
 
 logger = logging.getLogger("unifi-network-mcp")
 
@@ -30,8 +31,8 @@ def auto_load_tools(base_package: str = "src.tools") -> None:
         try:
             importlib.import_module(mod_name)
             logger.debug(f"Imported tool module: {mod_name}")
-        except Exception as exc:
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as exc:
             # Keep going even if one module fails so the rest still load
             logger.warning(f"Failed to import tool module '{mod_name}': {exc}")
 
-    logger.info("Finished auto‑loading MCP tool modules") 
+    logger.info("Finished auto‑loading MCP tool modules")

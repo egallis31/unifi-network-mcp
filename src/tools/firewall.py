@@ -4,15 +4,14 @@ Firewall policy tools for Unifi Network MCP server.
 
 import logging
 import json
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any
+from aiounifi.errors import RequestError, ResponseError
 
-from src.runtime import server, config, firewall_manager
-from src.runtime import network_manager
-import mcp.types as types # Import the types module
-from src.utils.permissions import parse_permission # CORRECTED import name
-from src.validator_registry import UniFiValidatorRegistry # Added
+from src.runtime import server, config, firewall_manager, network_manager
+from src.utils.permissions import parse_permission
+from src.validator_registry import UniFiValidatorRegistry
 
-logger = logging.getLogger(__name__) 
+logger = logging.getLogger(__name__)
 
 @server.tool(
     name="unifi_list_firewall_policies",
@@ -60,8 +59,8 @@ async def list_firewall_policies(
         ]
     }
     """
-    if not parse_permission(config.permissions, "firewall", "read"):
-        logger.warning(f"Permission denied for listing firewall policies.")
+    if not parse_permission(getattr(config, 'permissions', {}), "firewall", "read"):
+        logger.warning("Permission denied for listing firewall policies.")
         return {"success": False, "error": "Permission denied to list firewall policies."}
 
     try:
@@ -70,22 +69,22 @@ async def list_firewall_policies(
 
         formatted_policies = [
             {
-                "id": p.get("_id"),
-                "name": p.get("name"),
-                "enabled": p.get("enabled"),
-                "action": p.get("action"),
-                "rule_index": p.get("index", p.get("rule_index")),
-                "ruleset": p.get("ruleset"),
-                "description": p.get("description", p.get("desc", ""))
+                "id": getattr(p, "_id", None),
+                "name": getattr(p, "name", None),
+                "enabled": getattr(p, "enabled", None),
+                "action": getattr(p, "action", None),
+                "rule_index": getattr(p, "index", getattr(p, "rule_index", None)),
+                "ruleset": getattr(p, "ruleset", None),
+                "description": getattr(p, "description", getattr(p, "desc", ""))
             }
             for p in policies_raw
         ]
         return {
-            "success": True, "site": firewall_manager._connection.site,
+            "success": True, "site": getattr(getattr(firewall_manager, '_connection', None), 'site', 'default'),
             "count": len(formatted_policies), "policies": formatted_policies
         }
-    except Exception as e:
-        logger.error(f"Error listing firewall policies: {e}", exc_info=True)
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
+        logger.error("Error listing firewall policies: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}
 
 @server.tool(
@@ -132,21 +131,22 @@ async def get_firewall_policy_details(
         }
     }
     """
-    if not parse_permission(config.permissions, "firewall", "read"):
-        logger.warning(f"Permission denied for getting firewall policy details ({policy_id}).")
+    if not parse_permission(getattr(config, 'permissions', {}), "firewall", "read"):
+        logger.warning("Permission denied for getting firewall policy details (%s).", policy_id)
         return {"success": False, "error": "Permission denied to get firewall policy details."}
 
     try:
         if not policy_id:
-             return {"success": False, "error": "policy_id is required"}
+            return {"success": False, "error": "policy_id is required"}
         policies = await firewall_manager.get_firewall_policies(include_predefined=True)
         policies_raw = [p.raw if hasattr(p, "raw") else p for p in policies]
-        policy = next((p for p in policies_raw if p.get("_id") == policy_id), None)
+        policy = next((p for p in policies_raw if getattr(p, "_id", None) == policy_id), None)
         if not policy:
-            return {"success": False, "error": f"Firewall policy with ID '{policy_id}' not found."}
-        return {"success": True, "policy_id": policy_id, "details": json.loads(json.dumps(policy, default=str))} 
-    except Exception as e:
-        logger.error(f"Error getting firewall policy details for {policy_id}: {e}", exc_info=True)
+            return {"success": False, "
+                error": f"Firewall policy with ID '{policy_id}' not found."}
+        return {"success": True, "policy_id": policy_id, "details": json.loads(json.dumps(policy, default=str))}
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
+        logger.error("Error getting firewall policy details for %s: %s", policy_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
 @server.tool(
@@ -180,34 +180,35 @@ async def toggle_firewall_policy(
         "message": "Firewall policy 'Allow Established/Related' (60b8a7f1e4b0f4a7f7d6e8c0) toggled to disabled."
     }
     """
-    if not parse_permission(config.permissions, "firewall", "update"):
-        logger.warning(f"Permission denied for toggling firewall policy ({policy_id}).")
-        return {"success": False, "error": "Permission denied to toggle firewall policy."}
+    if not parse_permission(getattr(config, 'permissions', {}), "firewall", "update"):
+        logger.warning("Permission denied for updating firewall policy (%s).", policy_id)
+        return {"success": False, "error": "Permission denied"}
 
     if not confirm:
-        logger.warning(f"Confirmation missing for toggling policy {policy_id}.")
+        logger.warning("Confirmation missing for toggling policy %s.", policy_id)
         return {"success": False, "error": "Confirmation required to toggle policy. Set 'confirm' to true."}
-    
+
     try:
         policies = await firewall_manager.get_firewall_policies(include_predefined=True)
         policy_obj = next((p for p in policies if p.id == policy_id), None)
         if not policy_obj or not policy_obj.raw:
-            return {"success": False, "error": f"Firewall policy with ID '{policy_id}' not found."}
+            return {"success": False, "
+                error": f"Firewall policy with ID '{policy_id}' not found."}
         policy = policy_obj.raw
 
         current_state = policy.get("enabled", False)
         policy_name = policy.get("name", policy_id)
         new_state = not current_state
 
-        logger.info(f"Attempting to toggle firewall policy '{policy_name}' ({policy_id}) to {new_state}")
+        logger.info("Attempting to toggle firewall policy '%s' (%s) to %s", policy_name, policy_id, new_state)
 
         success = await firewall_manager.toggle_firewall_policy(policy_id)
-        
+
         if success:
             toggled_policy_obj = next((p for p in await firewall_manager.get_firewall_policies(include_predefined=True) if p.id == policy_id), None)
             final_state = toggled_policy_obj.enabled if toggled_policy_obj else new_state
-            
-            logger.info(f"Successfully toggled firewall policy '{policy_name}' ({policy_id}) to {final_state}")
+
+            logger.info("Successfully toggled firewall policy '%s' (%s) to %s", policy_name, policy_id, final_state)
             return {
                 "success": True,
                 "policy_id": policy_id,
@@ -215,7 +216,7 @@ async def toggle_firewall_policy(
                 "message": f"Firewall policy '{policy_name}' ({policy_id}) toggled successfully to {'enabled' if final_state else 'disabled'}."
             }
         else:
-            logger.error(f"Failed to toggle firewall policy '{policy_name}' ({policy_id}). Manager returned false.")
+            logger.error("Failed to toggle firewall policy '%s' (%s). Manager returned false.", policy_name, policy_id)
             policy_after_toggle_obj = next((p for p in await firewall_manager.get_firewall_policies(include_predefined=True) if p.id == policy_id), None)
             state_after = policy_after_toggle_obj.enabled if policy_after_toggle_obj else "unknown"
             return {
@@ -224,8 +225,8 @@ async def toggle_firewall_policy(
                 "state_after_attempt": state_after,
                 "error": f"Failed to toggle firewall policy '{policy_name}' ({policy_id}). Check server logs."
             }
-    except Exception as e:
-        logger.error(f"Error toggling firewall policy {policy_id}: {e}", exc_info=True)
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
+        logger.error("Error toggling firewall policy %s: %s", policy_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
 @server.tool(
@@ -298,7 +299,7 @@ async def create_firewall_policy(
         - details (Dict): Full details of the created policy as returned by the controller.
         - error (string): Error message if unsuccessful (includes validation errors or API errors).
     """
-    if not parse_permission(config.permissions, "firewall", "create"):
+    if not parse_permission(getattr(config, 'permissions', {}), "firewall", "create"):
         logger.warning("Permission denied for creating firewall policy.")
         return {"success": False, "error": "Permission denied to create firewall policy."}
 
@@ -307,13 +308,15 @@ async def create_firewall_policy(
 
     # --- Use Validator Registry for Comprehensive Validation ---
     # This replaces the basic required field checks below
-    from src.validator_registry import UniFiValidatorRegistry
     is_valid, error_msg, validated_data = UniFiValidatorRegistry.validate("firewall_policy_create", policy_data)
 
     if not is_valid:
-        logger.warning(f"Invalid firewall policy data: {error_msg}")
+        logger.warning("Invalid firewall policy data: %s", error_msg)
         # Provide the specific validation error back to the caller
         return {"success": False, "error": f"Validation Error: {error_msg}"}
+
+    if validated_data is None:
+        return {"success": False, "error": "Validated data is None after validation"}
     # --- End Validation ---
 
     # Enforce lowercase action (Validator might also handle this depending on schema definition)
@@ -328,9 +331,12 @@ async def create_firewall_policy(
     # Use the validated and potentially cleaned/defaulted data
     policy_data_to_send = validated_data
 
+    if policy_data_to_send is None:
+        return {"success": False, "error": "Policy data is None after validation"}
+
     policy_name = policy_data_to_send.get('name', 'Unnamed Policy')
     ruleset = policy_data_to_send.get('ruleset', 'Unknown Ruleset')
-    logger.info(f"Attempting to create firewall policy '{policy_name}' in ruleset '{ruleset}'")
+    logger.info("Attempting to create firewall policy '%s' in ruleset '%s'", policy_name, ruleset)
 
     try:
         # Call the new manager method
@@ -339,7 +345,7 @@ async def create_firewall_policy(
         if created_policy_obj and hasattr(created_policy_obj, 'raw'):
             created_policy_details = created_policy_obj.raw
             new_policy_id = created_policy_details.get("_id", "unknown")
-            logger.info(f"Successfully created firewall policy '{policy_name}' with ID {new_policy_id}")
+            logger.info("Successfully created firewall policy '%s' with ID %s", policy_name, new_policy_id)
             return {
                 "success": True,
                 "message": f"Firewall policy '{policy_name}' created successfully.",
@@ -348,7 +354,7 @@ async def create_firewall_policy(
             }
         else:
             # The manager method should log specific errors, return a generic failure here.
-            logger.error(f"Failed to create firewall policy '{policy_name}'. Manager returned None or invalid object.")
+            logger.error("Failed to create firewall policy '%s'. Manager returned None or invalid object.", policy_name)
             # Try to get a more specific error from the manager logs if possible.
             # You might enhance the manager to return error details instead of just None.
             return {
@@ -356,9 +362,9 @@ async def create_firewall_policy(
                 "error": f"Failed to create firewall policy '{policy_name}'. Check manager logs for details (e.g., API errors, invalid data)."
             }
 
-    except Exception as e:
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         # Catch unexpected errors during the tool's execution
-        logger.error(f"Unexpected error creating firewall policy '{policy_name}': {e}", exc_info=True)
+        logger.error("Unexpected error creating firewall policy '%s': %s", policy_name, e, exc_info=True)
         return {"success": False, "error": f"An unexpected error occurred: {str(e)}"}
 
 @server.tool(
@@ -373,7 +379,7 @@ async def update_firewall_policy(
     """
     Updates specific fields of an existing firewall policy. Requires confirmation.
 
-    Allows modifying properties like name, action, enabled state, rule index, 
+    Allows modifying properties like name, action, enabled state, rule index,
     protocol, addresses, ports, etc. Only provided fields are updated.
 
     Args:
@@ -425,54 +431,56 @@ async def update_firewall_policy(
         "details": { ... updated policy details ... }
     }
     """
-    if not parse_permission(config.permissions, "firewall", "update"):
-        logger.warning(f"Permission denied for updating firewall policy ({policy_id}).")
+    if not parse_permission(getattr(config, 'permissions', {}), "firewall", "update"):
+        logger.warning("Permission denied for updating firewall policy (%s).", policy_id)
         return {"success": False, "error": "Permission denied to update firewall policy."}
 
     if not confirm:
-        logger.warning(f"Confirmation missing for updating policy {policy_id}.")
+        logger.warning("Confirmation missing for updating policy %s.", policy_id)
         return {"success": False, "error": "Confirmation required to update policy. Set 'confirm' to true."}
 
-    if not policy_id: return {"success": False, "error": "policy_id is required"}
-    if not update_data: return {"success": False, "error": "update_data cannot be empty"}
+    if not policy_id:
+        return {"success": False, "error": "policy_id is required"}
+    if not update_data:
+        return {"success": False, "error": "update_data cannot be empty"}
 
     is_valid, error_msg, validated_data = UniFiValidatorRegistry.validate("firewall_policy_update", update_data)
     if not is_valid:
-        logger.warning(f"Invalid firewall policy update data for ID {policy_id}: {error_msg}")
+        logger.warning("Invalid firewall policy update data for ID %s: %s", policy_id, error_msg)
         return {"success": False, "error": f"Invalid update data: {error_msg}"}
 
     if not validated_data:
-         logger.warning(f"Firewall policy update data for ID {policy_id} is empty after validation.")
-         return {"success": False, "error": "Update data is effectively empty or invalid."}
+        logger.warning("Firewall policy update data for ID %s is empty after validation.", policy_id)
+        return {"success": False, "error": "Update data is effectively empty or invalid."}
 
     updated_fields_list = list(validated_data.keys())
-    logger.info(f"Attempting to update firewall policy '{policy_id}' with fields: {', '.join(updated_fields_list)}")
+    logger.info("Attempting to update firewall policy '%s' with fields: %s", policy_id, ', '.join(updated_fields_list))
     try:
         success = await firewall_manager.update_firewall_policy(policy_id, validated_data)
 
         if success:
             updated_policy_obj = next((p for p in await firewall_manager.get_firewall_policies(include_predefined=True) if p.id == policy_id), None)
             updated_details = updated_policy_obj.raw if updated_policy_obj else {}
-            logger.info(f"Successfully updated firewall policy ({policy_id})")
+            logger.info("Successfully updated firewall policy (%s)", policy_id)
             return {
-                "success": True, 
+                "success": True,
                 "policy_id": policy_id,
                 "updated_fields": updated_fields_list,
                 "details": json.loads(json.dumps(updated_details, default=str))
                 }
         else:
-            logger.error(f"Failed to update firewall policy ({policy_id}). Manager returned false.")
+            logger.error("Failed to update firewall policy (%s). Manager returned false.", policy_id)
             policy_after_update_obj = next((p for p in await firewall_manager.get_firewall_policies(include_predefined=True) if p.id == policy_id), None)
             details_after_attempt = policy_after_update_obj.raw if policy_after_update_obj else {}
             return {
-                "success": False, 
+                "success": False,
                 "policy_id": policy_id,
                 "error": f"Failed to update firewall policy ({policy_id}). Check server logs.",
                 "details_after_attempt": json.loads(json.dumps(details_after_attempt, default=str))
                 }
 
-    except Exception as e:
-        logger.error(f"Error updating firewall policy {policy_id}: {e}", exc_info=True)
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
+        logger.error("Error updating firewall policy %s: %s", policy_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
 @server.tool(
@@ -506,7 +514,7 @@ async def create_simple_firewall_policy(
     the rule and return the controller's response.
     """
 
-    if not parse_permission(config.permissions, "firewall", "create"):
+    if not parse_permission(getattr(config, 'permissions', {}), "firewall", "create"):
         return {"success": False, "error": "Permission denied."}
 
     # --- Step 1: validate high-level schema --------------------------------
@@ -547,7 +555,7 @@ async def create_simple_firewall_policy(
     try:
         src_ep = await _resolve_endpoint(pol["src"])
         dst_ep = await _resolve_endpoint(pol["dst"])
-    except Exception as exc:
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as exc:
         return {"success": False, "error": str(exc)}
 
     # --- Step 3: build controller payload ----------------------------------

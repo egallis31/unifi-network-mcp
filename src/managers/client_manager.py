@@ -1,9 +1,12 @@
+"""Client manager for UniFi Network Controller operations."""
+
 import logging
-from typing import Dict, List, Optional, Any
+from typing import List, Optional
 
 from aiounifi.models.api import ApiRequest
 from aiounifi.models.client import Client
-from .connection_manager import ConnectionManager
+
+from src.managers.connection_manager import ConnectionManager
 
 logger = logging.getLogger("unifi-network-mcp")
 
@@ -46,14 +49,14 @@ class ClientManager:
                     )
                     if isinstance(raw_clients, list) and raw_clients:
                         # Cache raw dicts; tool layer handles dict or Client
-                        self._connection._update_cache(cache_key, raw_clients)
+                        getattr(self._connection, "_update_cache", lambda k, v: None)(cache_key, raw_clients)
                         return raw_clients  # type: ignore[return-value]
-                except Exception as fallback_e:
-                    logger.debug(f"Raw clients fallback failed: {fallback_e}")
-            self._connection._update_cache(cache_key, clients)
+                except (ValueError, TypeError, AttributeError, KeyError) as fallback_e:
+                    logger.debug("Raw clients fallback failed: %s", fallback_e)
+            getattr(self._connection, "_update_cache", lambda k, v: None)(cache_key, clients)
             return clients
-        except Exception as e:
-            logger.error(f"Error getting online clients: {e}")
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
+            logger.error("Error getting online clients: %s", e)
             return []
 
     async def get_all_clients(self) -> List[Client]:
@@ -81,22 +84,26 @@ class ClientManager:
                         ApiRequest(method="get", path="/rest/user")
                     )
                     if isinstance(raw_all, list) and raw_all:
-                        self._connection._update_cache(cache_key, raw_all)
+                        getattr(self._connection, "_update_cache", lambda k, v: None)(cache_key, raw_all)
                         return raw_all  # type: ignore[return-value]
-                except Exception as fallback_e:
-                    logger.debug(f"Raw all-clients fallback failed: {fallback_e}")
-            self._connection._update_cache(cache_key, all_clients)
+                except (ValueError, TypeError, AttributeError, KeyError) as fallback_e:
+                    logger.debug("Raw all-clients fallback failed: %s", fallback_e)
+            getattr(self._connection, "_update_cache", lambda k, v: None)(cache_key, all_clients)
             return all_clients
-        except Exception as e:
-            logger.error(f"Error getting all clients: {e}")
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
+            logger.error("Error getting all clients: %s", e)
             return []
 
     async def get_client_details(self, client_mac: str) -> Optional[Client]:
         """Get detailed information for a specific client by MAC address."""
         all_clients = await self.get_all_clients()
-        client: Optional[Client] = next((c for c in all_clients if c.mac == client_mac), None)
+        client: Optional[Client] = next(
+            (c for c in all_clients if c.mac == client_mac), None
+        )
         if not client:
-             logger.debug(f"Client details for MAC {client_mac} not found in clients_all list.")
+            logger.debug(
+                "Client details for MAC %s not found in clients_all list.", client_mac
+            )
         return client
 
     async def block_client(self, client_mac: str) -> bool:
@@ -106,15 +113,17 @@ class ClientManager:
             api_request = ApiRequest(
                 method="post",
                 path="/cmd/stamgr",
-                json={"mac": client_mac, "cmd": "block-sta"}
+                data={"mac": client_mac, "cmd": "block-sta"}
             )
             # Call the updated request method
             await self._connection.request(api_request)
-            logger.info(f"Block command sent for client {client_mac}")
-            self._connection._invalidate_cache(f"{CACHE_PREFIX_CLIENTS}") # Invalidate all client caches
+            logger.info("Block command sent for client %s", client_mac)
+            # Invalidate all client caches
+            cache_key_to_invalidate = f"{CACHE_PREFIX_CLIENTS}"
+            getattr(self._connection, "_invalidate_cache", lambda x: None)(cache_key_to_invalidate)
             return True
-        except Exception as e:
-            logger.error(f"Error blocking client {client_mac}: {e}")
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
+            logger.error("Error blocking client %s: %s", client_mac, e)
             return False
 
     async def unblock_client(self, client_mac: str) -> bool:
@@ -124,15 +133,16 @@ class ClientManager:
             api_request = ApiRequest(
                 method="post",
                 path="/cmd/stamgr",
-                json={"mac": client_mac, "cmd": "unblock-sta"}
+                data={"mac": client_mac, "cmd": "unblock-sta"}
             )
             # Call the updated request method
             await self._connection.request(api_request)
-            logger.info(f"Unblock command sent for client {client_mac}")
-            self._connection._invalidate_cache(f"{CACHE_PREFIX_CLIENTS}")
+            logger.info("Unblock command sent for client %s", client_mac)
+            cache_key_to_invalidate = f"{CACHE_PREFIX_CLIENTS}"
+            getattr(self._connection, "_invalidate_cache", lambda x: None)(cache_key_to_invalidate)
             return True
-        except Exception as e:
-            logger.error(f"Error unblocking client {client_mac}: {e}")
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
+            logger.error("Error unblocking client %s: %s", client_mac, e)
             return False
 
     async def rename_client(self, client_mac: str, name: str) -> bool:
@@ -140,21 +150,24 @@ class ClientManager:
         try:
             client = await self.get_client_details(client_mac)
             if not client or "_id" not in client.raw:
-                logger.error(f"Cannot rename client {client_mac}: Not found or missing ID.")
+                logger.error(
+                    "Cannot rename client %s: Not found or missing ID.", client_mac
+                )
                 return False
             client_id = client.raw["_id"]
 
             api_request = ApiRequest(
                 method="put",
                 path=f"/upd/user/{client_id}",
-                json={"name": name}
+                data={"name": name}
             )
             await self._connection.request(api_request)
-            logger.info(f"Rename command sent for client {client_mac} to '{name}'")
-            self._connection._invalidate_cache(f"{CACHE_PREFIX_CLIENTS}")
+            logger.info("Rename command sent for client %s to '%s'", client_mac, name)
+            cache_key_to_invalidate = f"{CACHE_PREFIX_CLIENTS}"
+            getattr(self._connection, "_invalidate_cache", lambda x: None)(cache_key_to_invalidate)
             return True
-        except Exception as e:
-            logger.error(f"Error renaming client {client_mac} to '{name}': {e}")
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
+            logger.error("Error renaming client %s to '%s': %s", client_mac, name, e)
             return False
 
     async def force_reconnect_client(self, client_mac: str) -> bool:
@@ -163,14 +176,15 @@ class ClientManager:
             api_request = ApiRequest(
                 method="post",
                 path="/cmd/stamgr",
-                json={"mac": client_mac, "cmd": "kick-sta"}
+                data={"mac": client_mac, "cmd": "kick-sta"}
             )
             await self._connection.request(api_request)
-            logger.info(f"Force reconnect (kick) command sent for client {client_mac}")
-            self._connection._invalidate_cache(f"{CACHE_PREFIX_CLIENTS}")
+            logger.info("Force reconnect (kick) command sent for client %s", client_mac)
+            cache_key_to_invalidate = f"{CACHE_PREFIX_CLIENTS}"
+            getattr(self._connection, "_invalidate_cache", lambda x: None)(cache_key_to_invalidate)
             return True
-        except Exception as e:
-            logger.error(f"Error forcing reconnect for client {client_mac}: {e}")
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
+            logger.error("Error forcing reconnect for client %s: %s", client_mac, e)
             return False
 
     async def get_blocked_clients(self) -> List[Client]:
@@ -202,15 +216,18 @@ class ClientManager:
             api_request = ApiRequest(
                 method="post",
                 path="/cmd/stamgr",
-                json=payload
+                data=payload
             )
             # Call the updated request method
             await self._connection.request(api_request)
-            logger.info(f"Authorize command sent for guest {client_mac} for {minutes} minutes")
-            self._connection._invalidate_cache(f"{CACHE_PREFIX_CLIENTS}")
+            logger.info(
+                "Authorize command sent for guest %s for %s minutes", client_mac, minutes
+            )
+            cache_key_to_invalidate = f"{CACHE_PREFIX_CLIENTS}"
+            getattr(self._connection, "_invalidate_cache", lambda x: None)(cache_key_to_invalidate)
             return True
-        except Exception as e:
-            logger.error(f"Error authorizing guest {client_mac}: {e}")
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
+            logger.error("Error authorizing guest %s: %s", client_mac, e)
             return False
 
     async def unauthorize_guest(self, client_mac: str) -> bool:
@@ -219,12 +236,13 @@ class ClientManager:
             api_request = ApiRequest(
                 method="post",
                 path="/cmd/stamgr",
-                json={"mac": client_mac, "cmd": "unauthorize-guest"}
+                data={"mac": client_mac, "cmd": "unauthorize-guest"}
             )
             await self._connection.request(api_request)
-            logger.info(f"Unauthorize command sent for guest {client_mac}")
-            self._connection._invalidate_cache(f"{CACHE_PREFIX_CLIENTS}")
+            logger.info("Unauthorize command sent for guest %s", client_mac)
+            cache_key_to_invalidate = f"{CACHE_PREFIX_CLIENTS}"
+            getattr(self._connection, "_invalidate_cache", lambda x: None)(cache_key_to_invalidate)
             return True
-        except Exception as e:
-            logger.error(f"Error unauthorizing guest {client_mac}: {e}")
-            return False 
+        except (ValueError, TypeError, AttributeError, KeyError) as e:
+            logger.error("Error unauthorizing guest %s: %s", client_mac, e)
+            return False

@@ -1,18 +1,15 @@
-"""
-Traffic route tools for Unifi Network MCP server.
-"""
+"""Traffic route tools for Unifi Network MCP server."""
 
 import logging
 import json
-from typing import Dict, List, Any, Optional, Iterable
-import copy
+from typing import Any, Dict
+from aiounifi.errors import RequestError, ResponseError
 
 from src.runtime import server, config, firewall_manager, network_manager
-import mcp.types as types
 from src.utils.permissions import parse_permission
 from src.validator_registry import UniFiValidatorRegistry
 
-logger = logging.getLogger(__name__) 
+logger = logging.getLogger(__name__)
 
 @server.tool(
     name="unifi_list_traffic_routes",
@@ -65,15 +62,15 @@ async def list_traffic_routes() -> Dict[str, Any]:
                 "domains": None,
                 "ip_addresses": None,
                 "regions": None,
-                "network_id": null, 
+                "network_id": null,
                 "kill_switch_enabled": false,
                 "next_hop": null
             }
         ]
     }
     """
-    if not parse_permission(config.permissions, "traffic_route", "read"):
-        logger.warning(f"Permission denied for listing traffic routes.")
+    if not parse_permission(getattr(config, "permissions", {}), "traffic_route", "read"):
+        logger.warning("Permission denied for listing traffic routes.")
         return {"success": False, "error": "Permission denied to list traffic routes."}
     try:
         routes = await firewall_manager.get_traffic_routes()
@@ -82,22 +79,18 @@ async def list_traffic_routes() -> Dict[str, Any]:
         # Basic filtering to ensure only dicts are passed, log if not
         valid_routes_raw = []
         for idx, r_raw in enumerate(routes_raw):
-             if isinstance(r_raw, dict) and r_raw.get("_id"):
-                 valid_routes_raw.append(r_raw)
-             else:
-                  logger.warning(f"Skipping invalid/incomplete route data at index {idx}: {r_raw}")
+            if isinstance(r_raw, dict) and r_raw.get("_id"):
+                valid_routes_raw.append(r_raw)
+            else:
+                logger.warning("Skipping invalid/incomplete route data at index %s: %s", idx, r_raw)
 
         # Ensure serializability for JSON response
         serializable_routes = json.loads(json.dumps(valid_routes_raw, default=str))
 
-        return {
-            "success": True, 
-            "site": firewall_manager._connection.site, 
-            "count": len(serializable_routes), 
-            "traffic_routes": serializable_routes
-        }
-    except Exception as e:
-        logger.error(f"Error listing traffic routes: {e}", exc_info=True)
+        site = getattr(getattr(firewall_manager, "connection", None), "site", None) or getattr(getattr(firewall_manager, "_connection", None), "site", None)
+        return {"success": True, "site": site, "count": len(serializable_routes), "traffic_routes": serializable_routes}
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001
+        logger.error("Error listing traffic routes: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}
 
 @server.tool(
@@ -148,22 +141,24 @@ async def get_traffic_route_details(route_id: str) -> Dict[str, Any]:
         }
     }
     """
-    if not parse_permission(config.permissions, "traffic_route", "read"):
-        logger.warning(f"Permission denied for getting traffic route details ({route_id}).")
+    if not parse_permission(getattr(config, "permissions", {}), "traffic_route", "read"):
+        logger.warning("Permission denied for getting traffic route details (%s).", route_id)
         return {"success": False, "error": "Permission denied to get traffic route details."}
     try:
-        if not route_id: return {"success": False, "error": "route_id is required"}
+        if not route_id:
+            return {"success": False, "error": "route_id is required"}
         routes = await firewall_manager.get_traffic_routes()
         # Find the specific route based on its raw data
         route_obj = next((r for r in routes if hasattr(r, "raw") and isinstance(r.raw, dict) and r.raw.get("_id") == route_id), None)
-        
+
         if not route_obj or not route_obj.raw:
-            return {"success": False, "error": f"Traffic route '{route_id}' not found or has invalid data."}
-            
+            return {"success": False, "
+                error": f"Traffic route '{route_id}' not found or has invalid data."}
+
         # Return raw details - ensure serializable
         return {"success": True, "route_id": route_id, "details": json.loads(json.dumps(route_obj.raw, default=str))}
-    except Exception as e:
-        logger.error(f"Error getting traffic route details for {route_id}: {e}", exc_info=True)
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001
+        logger.error("Error getting traffic route details for %s: %s", route_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
 @server.tool(
@@ -193,14 +188,14 @@ async def toggle_traffic_route(route_id: str, confirm: bool = False) -> Dict[str
         "message": "Traffic route 'Google DNS Route' (61a7b8c9d0e1f2a3b4c5d6e7) toggled to disabled."
     }
     """
-    if not parse_permission(config.permissions, "traffic_route", "update"):
-        logger.warning(f"Permission denied for toggling traffic route ({route_id}).")
+    if not parse_permission(getattr(config, "permissions", {}), "traffic_route", "update"):
+        logger.warning("Permission denied for toggling traffic route (%s).", route_id)
         return {"success": False, "error": "Permission denied to toggle traffic route."}
 
-    if not confirm: 
-        logger.warning(f"Confirmation missing for toggling traffic route {route_id}.")
+    if not confirm:
+        logger.warning("Confirmation missing for toggling traffic route %s.", route_id)
         return {"success": False, "error": "Confirmation required. Set 'confirm' to true."}
-    
+
     try:
         routes = await firewall_manager.get_traffic_routes()
         route_obj = next((r for r in routes if r.id == route_id), None)
@@ -212,30 +207,30 @@ async def toggle_traffic_route(route_id: str, confirm: bool = False) -> Dict[str
         route_name = route.get("name", route_id)
         new_state = not current_state
 
-        logger.info(f"Attempting to toggle traffic route '{route_name}' ({route_id}) to {new_state}")
-        
+        logger.info("Attempting to toggle traffic route '%s' (%s) to %s", route_name, route_id, new_state)
+
         success = await firewall_manager.toggle_traffic_route(route_id)
-        
+
         if success:
             toggled_route_obj = next((r for r in await firewall_manager.get_traffic_routes() if r.id == route_id), None)
             final_state = toggled_route_obj.enabled if toggled_route_obj else new_state
-            
-            logger.info(f"Successfully toggled traffic route '{route_name}' ({route_id}) to {final_state}")
-            return {"success": True, 
+
+            logger.info("Successfully toggled traffic route '%s' (%s) to %s", route_name, route_id, final_state)
+            return {"success": True,
                     "route_id": route_id,
                     "enabled": final_state,
                     "message": f"Traffic route '{route_name}' ({route_id}) toggled to {'enabled' if final_state else 'disabled'}."}
         else:
-            logger.error(f"Failed to toggle traffic route '{route_name}' ({route_id}). Manager returned false.")
+            logger.error("Failed to toggle traffic route '%s' (%s). Manager returned false.", route_name, route_id)
             route_after_toggle_obj = next((r for r in await firewall_manager.get_traffic_routes() if r.id == route_id), None)
             state_after = route_after_toggle_obj.enabled if route_after_toggle_obj else "unknown"
-            return {"success": False, 
+            return {"success": False,
                     "route_id": route_id,
                     "state_after_attempt": state_after,
                     "error": f"Failed to toggle traffic route '{route_name}'. Check server logs."}
-                    
-    except Exception as e:
-        logger.error(f"Error toggling traffic route {route_id}: {e}", exc_info=True)
+
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001
+        logger.error("Error toggling traffic route %s: %s", route_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
 @server.tool(
@@ -289,25 +284,27 @@ async def update_traffic_route(
         "details": { ... updated route details ... }
     }
     """
-    if not parse_permission(config.permissions, "traffic_route", "update"):
-        logger.warning(f"Permission denied for updating traffic route ({route_id}).")
+    if not parse_permission(getattr(config, "permissions", {}), "traffic_route", "update"):
+        logger.warning("Permission denied for updating traffic route (%s).", route_id)
         return {"success": False, "error": "Permission denied to update traffic route."}
 
     if not confirm:
-        logger.warning(f"Confirmation missing for updating traffic route {route_id}.")
+        logger.warning("Confirmation missing for updating traffic route %s.", route_id)
         return {"success": False, "error": "Confirmation required. Set 'confirm' to true."}
 
-    if not route_id: return {"success": False, "error": "route_id is required"}
-    if not update_data: return {"success": False, "error": "update_data cannot be empty"}
+    if not route_id:
+        return {"success": False, "error": "route_id is required"}
+    if not update_data:
+        return {"success": False, "error": "update_data cannot be empty"}
 
     # Use the V2 update schema for validation
     is_valid, error_msg, validated_data = UniFiValidatorRegistry.validate("traffic_route_update", update_data)
     if not is_valid:
-        logger.warning(f"Invalid traffic route update data for ID {route_id}: {error_msg}")
+        logger.warning("Invalid traffic route update data for ID %s: %s", route_id, error_msg)
         return {"success": False, "error": f"Invalid update data: {error_msg}"}
-        
+
     if not validated_data:
-        logger.warning(f"Traffic route update data for ID {route_id} is empty after validation.")
+        logger.warning("Traffic route update data for ID %s is empty after validation.", route_id)
         return {"success": False, "error": "Update data is effectively empty or invalid."}
 
     try:
@@ -315,23 +312,24 @@ async def update_traffic_route(
         routes = await firewall_manager.get_traffic_routes()
         existing_route_obj = next((r for r in routes if hasattr(r, "raw") and isinstance(r.raw, dict) and r.raw.get("_id") == route_id), None)
         if not existing_route_obj or not existing_route_obj.raw:
-            return {"success": False, "error": f"Traffic route '{route_id}' not found for update."}
-        
+            return {"success": False, "
+                error": f"Traffic route '{route_id}' not found for update."}
+
         route_name = existing_route_obj.raw.get("name", route_id) # For logging
         updated_fields_list = list(validated_data.keys())
 
         # 2. Call manager with only the validated update_data (V2 PUT often replaces/updates only provided fields)
-        logger.info(f"Attempting to update traffic route '{route_name}' ({route_id}) with fields: {updated_fields_list}")
+        logger.info("Attempting to update traffic route '%s' (%s) with fields: %s", route_name, route_id, updated_fields_list)
         # The manager's update_traffic_route is expected to handle the V2 PUT correctly
         # It might internally fetch and merge, or just send the partial update. Assuming it sends partial.
         success = await firewall_manager.update_traffic_route(route_id, validated_data) # Pass only validated changes
-        
+
         # 3. Fetch again to get the *actual* state after update attempt
         updated_route_obj = next((r for r in await firewall_manager.get_traffic_routes() if hasattr(r, "raw") and isinstance(r.raw, dict) and r.raw.get("_id") == route_id), None)
         details_after_attempt = updated_route_obj.raw if updated_route_obj else {}
 
         if success:
-            logger.info(f"Successfully submitted update for traffic route '{route_name}' ({route_id})")
+            logger.info("Successfully submitted update for traffic route '%s' (%s)", route_name, route_id)
             return {
                 "success": True,
                 "route_id": route_id,
@@ -339,16 +337,16 @@ async def update_traffic_route(
                 "details": json.loads(json.dumps(details_after_attempt, default=str)) # Return state AFTER update
             }
         else:
-            logger.error(f"Manager reported failure updating traffic route '{route_name}' ({route_id}).")
+            logger.error("Manager reported failure updating traffic route '%s' (%s).", route_name, route_id)
             return {
-                "success": False, 
+                "success": False,
                 "route_id": route_id,
                 "error": f"Failed to update traffic route '{route_name}'. Check manager logs.",
                 "details_after_attempt": json.loads(json.dumps(details_after_attempt, default=str)) # Still return state
             }
 
-    except Exception as e:
-        logger.error(f"Error updating traffic route {route_id}: {e}", exc_info=True)
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001
+        logger.error("Error updating traffic route %s: %s", route_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
 
 @server.tool(
@@ -359,7 +357,7 @@ async def create_traffic_route(
     route_data: Dict[str, Any]
 ) -> Dict[str, Any]:
     """Create a new traffic route using the V2 API structure with validation.
-    
+
     Requires `name`, `interface`, `matching_target`, `network_id`, and `target_devices` in `route_data`.
     The structure of `route_data` should follow `TRAFFIC_ROUTE_SCHEMA` defined in `src/schemas.py`.
 
@@ -393,7 +391,7 @@ async def create_traffic_route(
         "enabled": true,
         "description": "Route specific Xbox client via WAN2"
     }
-    
+
     Example targeting a whole network (VLAN) for specific domains via VPN:
     {
         "name": "Route Corp VLAN Domains via VPN",
@@ -412,7 +410,7 @@ async def create_traffic_route(
         ],
         "enabled": true
     }
-    
+
     Returns:
         A dictionary containing:
         - success (bool): Whether the operation succeeded.
@@ -420,61 +418,62 @@ async def create_traffic_route(
         - message (str): Confirmation message if successful.
         - error (str): Error message if unsuccessful.
     """
-    if not parse_permission(config.permissions, "traffic_route", "create"):
-        logger.warning(f"Permission denied for creating traffic route.")
+    if not parse_permission(getattr(config, "permissions", {}), "traffic_route", "create"):
+        logger.warning("Permission denied for creating traffic route.")
         return {"success": False, "error": "Permission denied to create traffic route."}
-        
+
     is_valid, error_msg, validated_data = UniFiValidatorRegistry.validate("traffic_route", route_data)
     if not is_valid:
-        logger.warning(f"Invalid traffic route data: {error_msg}")
+        logger.warning("Invalid traffic route data: %s", error_msg)
         return {"success": False, "error": f"Validation error: {error_msg}"}
 
     # Additional semantic checks based on matching_target could still be useful
+    if validated_data is None:
+        return {"success": False, "error": "Validation produced no data."}
     matching_target = validated_data.get("matching_target")
     if matching_target == "DOMAIN" and not validated_data.get("domains"):
-         return {"success": False, "error": "Field 'domains' is required when matching_target is 'DOMAIN'."}
+        return {"success": False, "error": "Field 'domains' is required when matching_target is 'DOMAIN'."}
     if matching_target == "IP" and not validated_data.get("ip_addresses"):
-         return {"success": False, "error": "Field 'ip_addresses' is required when matching_target is 'IP'."}
+        return {"success": False, "error": "Field 'ip_addresses' is required when matching_target is 'IP'."}
     if matching_target == "REGION" and not validated_data.get("regions"):
-         return {"success": False, "error": "Field 'regions' is required when matching_target is 'REGION'."}
+        return {"success": False, "error": "Field 'regions' is required when matching_target is 'REGION'."}
 
     try:
         route_name = validated_data.get("name", "Unnamed Route")
-        logger.info(f"Attempting to create traffic route '{route_name}' via interface '{validated_data.get('interface')}' with validated data.")
-        
+        logger.info("Attempting to create traffic route '%s' via interface '%s' with validated data.", route_name, validated_data.get('interface'))
+
         # Explicitly build the payload using only fields defined in the schema
         # to avoid passing extraneous fields from LLM input.
         validator = UniFiValidatorRegistry.get_validator("traffic_route")
         if not validator:
-             # This should ideally not happen if validation passed, but defensive check
-             logger.error("Could not retrieve validator for 'traffic_route' after successful validation.")
-             return {"success": False, "error": "Internal error: Validator not found after validation."}
+            # This should ideally not happen if validation passed, but defensive check
+            logger.error("Could not retrieve validator for 'traffic_route' after successful validation.")
+            return {"success": False, "error": "Internal error: Validator not found after validation."}
 
         schema = validator.schema # Assuming ResourceValidator stores schema here
         schema_props = schema.get("properties", {}) if schema else {}
         payload_to_send = {k: v for k, v in validated_data.items() if k in schema_props}
-        
+
         # Call the manager to create the route using the cleaned payload
         result = await firewall_manager.create_traffic_route(payload_to_send)
 
         if result and result.get("success"):
-             # Manager indicates success
-             new_id = result.get("route_id")
-             logger.info(f"Manager reported success creating traffic route '{route_name}'. ID: {new_id}")
-             return {
-                 "success": True, 
-                 "route_id": new_id, 
-                 "message": f"Traffic route '{route_name}' created successfully (ID: {new_id})."
-             }
+            # Manager indicates success
+            new_id = result.get("route_id")
+            logger.info("Manager reported success creating traffic route '%s'. ID: %s", route_name, new_id)
+            return {
+                "success": True,
+                "route_id": new_id,
+                "message": f"Traffic route '{route_name}' created successfully (ID: {new_id})."
+            }
         else:
             # Manager returned failure or unexpected response
             error_msg = result.get("error", "Unknown error during traffic route creation.") if isinstance(result, dict) else "Manager did not return a valid response."
-            logger.error(f"Failed to create traffic route '{route_name}'. Manager returned: {result}")
+            logger.error("Failed to create traffic route '%s'. Manager returned: %s", route_name, result)
             return {"success": False, "error": error_msg}
 
-    except Exception as e:
-        # Catch exceptions from validation or other unexpected issues
-        logger.error(f"Error in create_traffic_route tool: {e}", exc_info=True)
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001
+        logger.error("Error in create_traffic_route tool: %s", e, exc_info=True)
         return {"success": False, "error": f"Tool error: {str(e)}"}
 
 @server.tool(
@@ -498,42 +497,48 @@ async def create_simple_traffic_route(route: Dict[str, Any], confirm: bool = Fal
     }
     """
 
-    if not parse_permission(config.permissions, "firewall", "create"):
+    if not parse_permission(getattr(config, "permissions", {}), "firewall", "create"):
         return {"success": False, "error": "Permission denied."}
 
     ok, err, validated = UniFiValidatorRegistry.validate("traffic_route_simple", route)
     if not ok:
         return {"success": False, "error": err}
+    if validated is None:
+        return {"success": False, "error": "Validation produced no data."}
     r = validated
 
     # Resolve network to id
     nets = await network_manager.get_networks()
-    net_obj = next((n for n in nets if n.get("_id") == r["network"] or n.get("name") == r["network"]), None)
+    net_key = r.get("network")
+    net_obj = next((n for n in nets if n.get("_id") == net_key or n.get("name") == net_key), None)
     if not net_obj:
-        return {"success": False, "error": f"Network '{r['network']}' not found"}
-    network_id = net_obj["_id"]
+        return {"success": False, "error": f"Network '{net_key}' not found"}
+    network_id = net_obj.get("_id")
 
     # Build target_devices list
-    if r.get("client_macs"):
-        targets = [{"type": "CLIENT", "client_mac": m.lower()} for m in r["client_macs"]]
+    client_macs = r.get("client_macs") or []
+    if client_macs:
+        targets = [{"type": "CLIENT", "client_mac": m.lower()} for m in client_macs]
     else:
         targets = [{"type": "NETWORK", "network_id": network_id}]
 
     payload: Dict[str, Any] = {
-        "name": r["name"],
-        "interface": r["interface"],
+        "name": r.get("name"),
+        "interface": r.get("interface"),
         "network_id": network_id,
         "target_devices": targets,
-        "matching_target": r["matching_target"],
+        "matching_target": r.get("matching_target"),
         "enabled": r.get("enabled", True),
     }
 
-    if r["matching_target"] == "DOMAIN":
-        payload["domains"] = [{"domain": d} for d in r.get("destinations", [])]
-    elif r["matching_target"] == "IP":
-        payload["ip_addresses"] = [{"ip_or_subnet": ip} for ip in r.get("destinations", [])]
-    elif r["matching_target"] == "REGION":
-        payload["regions"] = r.get("destinations", [])
+    mt = r.get("matching_target")
+    destinations = r.get("destinations", []) or []
+    if mt == "DOMAIN":
+        payload["domains"] = [{"domain": d} for d in destinations]
+    elif mt == "IP":
+        payload["ip_addresses"] = [{"ip_or_subnet": ip} for ip in destinations]
+    elif mt == "REGION":
+        payload["regions"] = destinations
     # INTERNET needs no extra field
 
     if not confirm:

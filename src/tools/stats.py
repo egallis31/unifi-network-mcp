@@ -5,13 +5,10 @@ This module provides MCP tools to fetch statistics from a Unifi Network Controll
 """
 
 import logging
-import json
-from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
+from typing import Dict, Any
+from aiounifi.errors import RequestError, ResponseError
 
-from src.runtime import server, config, stats_manager, client_manager, system_manager
-import mcp.types as types # Import the types module
-from src.utils.permissions import parse_permission
+from src.runtime import server, stats_manager, client_manager, device_manager
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +19,9 @@ logger = logging.getLogger(__name__)
 async def get_network_stats(duration: str = "hourly") -> Dict[str, Any]:
     """Implementation for getting network stats."""
     try:
-        duration_hours = {"hourly": 1, "daily": 24, "weekly": 168, "monthly": 720}.get(duration, 1)
+        duration_hours = {
+            "hourly": 1, "daily": 24, "weekly": 168, "monthly": 720
+        }.get(duration, 1)
         stats = await stats_manager.get_network_stats(duration_hours=duration_hours)
         def _first_non_none(*values):
             for v in values:
@@ -34,19 +33,32 @@ async def get_network_stats(duration: str = "hourly") -> Dict[str, Any]:
             "total_rx_bytes": sum(int(e.get("rx_bytes", 0) or 0) for e in stats),
             "total_tx_bytes": sum(int(e.get("tx_bytes", 0) or 0) for e in stats),
             "total_bytes": sum(
-                int(
-                    (e.get("bytes") if e.get("bytes") is not None else (e.get("rx_bytes", 0) or 0) + (e.get("tx_bytes", 0) or 0))
-                )
+                int(e.get("bytes") or 0) if e.get("bytes") is not None
+                else int(e.get("rx_bytes", 0) or 0) + int(e.get("tx_bytes", 0) or 0)
                 for e in stats
             ),
             "avg_clients": int(
-                sum(_first_non_none(e.get("num_user"), e.get("num_active_user"), e.get("num_sta")) for e in stats)
-                / max(1, len(stats))
+                sum(
+                    _first_non_none(
+                        e.get("num_user"),
+                        e.get("num_active_user"),
+                        e.get("num_sta")
+                    )
+                    for e in stats
+                ) / max(1, len(stats))
             ) if stats else 0,
         }
-        return {"success": True, "site": stats_manager._connection.site, "duration": duration, "summary": summary, "stats": stats}
-    except Exception as e:
-        logger.error(f"Error getting network stats: {e}", exc_info=True)
+        return {
+            "success": True,
+            "site": getattr(
+                getattr(stats_manager, "_connection", None), "site", "unknown"
+            ),
+            "duration": duration,
+            "summary": summary,
+            "stats": stats
+        }
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
+        logger.error("Error getting network stats: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}
 
 @server.tool(
@@ -56,28 +68,59 @@ async def get_network_stats(duration: str = "hourly") -> Dict[str, Any]:
 async def get_client_stats(client_id: str, duration: str = "hourly") -> Dict[str, Any]:
     """Implementation for getting client stats."""
     try:
-        duration_hours = {"hourly": 1, "daily": 24, "weekly": 168, "monthly": 720}.get(duration, 1)
+        duration_hours = {
+            "hourly": 1, "daily": 24, "weekly": 168, "monthly": 720
+        }.get(duration, 1)
         client_details = await client_manager.get_client_details(client_id)
         if not client_details:
             return {"success": False, "error": f"Client '{client_id}' not found"}
 
         # Support aiounifi Client objects as well as dicts
-        client_raw = client_details.raw if hasattr(client_details, "raw") else client_details
-        client_mac = client_raw.get("mac", client_id)
-        client_name = client_raw.get("name") or client_raw.get("hostname") or client_mac
+        client_raw = (
+            client_details.raw if hasattr(client_details, "raw")
+            else client_details
+        )
+
+        # Handle both dict and object types
+        def safe_get(obj, key, default=None):
+            if isinstance(obj, dict):
+                return obj.get(key, default)
+            return getattr(obj, key, default)
+
+        client_mac = safe_get(client_raw, "mac", client_id)
+        client_name = (
+            safe_get(client_raw, "name")
+            or safe_get(client_raw, "hostname")
+            or client_mac
+        )
 
         # Stats endpoint expects MAC, not _id
-        stats = await stats_manager.get_client_stats(client_mac, duration_hours=duration_hours)
+        stats = await stats_manager.get_client_stats(
+            client_mac, duration_hours=duration_hours
+        )
         summary = {
             "total_rx_bytes": sum(e.get("rx_bytes", 0) for e in stats),
             "total_tx_bytes": sum(e.get("tx_bytes", 0) for e in stats),
             "total_bytes": sum(
-                e.get("bytes", e.get("rx_bytes", 0) + e.get("tx_bytes", 0)) for e in stats
+                e.get("bytes", e.get("rx_bytes", 0) + e.get("tx_bytes", 0))
+                for e in stats
             ),
         }
-        return {"success": True, "site": stats_manager._connection.site, "client_id": client_id, "client_name": client_name, "duration": duration, "summary": summary, "stats": stats}
-    except Exception as e:
-        logger.error(f"Error getting client stats for {client_id}: {e}", exc_info=True)
+        return {
+            "success": True,
+            "site": getattr(
+                getattr(stats_manager, "_connection", None), "site", "unknown"
+            ),
+            "client_id": client_id,
+            "client_name": client_name,
+            "duration": duration,
+            "summary": summary,
+            "stats": stats
+        }
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
+        logger.error(
+            "Error getting client stats for %s: %s", client_id, e, exc_info=True
+        )
         return {"success": False, "error": str(e)}
 
 @server.tool(
@@ -87,30 +130,59 @@ async def get_client_stats(client_id: str, duration: str = "hourly") -> Dict[str
 async def get_device_stats(device_id: str, duration: str = "hourly") -> Dict[str, Any]:
     """Implementation for getting device stats."""
     try:
-        duration_hours = {"hourly": 1, "daily": 24, "weekly": 168, "monthly": 720}.get(duration, 1)
-        device_details = await system_manager.get_device_details(device_id)
+        duration_hours = {
+            "hourly": 1, "daily": 24, "weekly": 168, "monthly": 720
+        }.get(duration, 1)
+        device_details = await device_manager.get_device_details(device_id)
         if not device_details:
             return {"success": False, "error": f"Device '{device_id}' not found"}
-        
-        device_name = device_details.get("name") or device_details.get("model", "Unknown")
-        actual_device_id = device_details.get("_id", device_id)
-        device_type = device_details.get("type", "unknown")
 
-        stats = await stats_manager.get_device_stats(actual_device_id, duration_hours=duration_hours)
+        # Handle both dict and object types for device details
+        def safe_get_device(obj, key, default=None):
+            if isinstance(obj, dict):
+                return obj.get(key, default)
+            return getattr(obj, key, default)
+
+        device_name = (
+            safe_get_device(device_details, "name")
+            or safe_get_device(device_details, "model", "Unknown")
+        )
+        actual_device_id = safe_get_device(device_details, "_id", device_id)
+        device_type = safe_get_device(device_details, "type", "unknown")
+
+        stats = await stats_manager.get_device_stats(
+            actual_device_id, duration_hours=duration_hours
+        )
         summary = {
             "total_rx_bytes": sum(e.get("rx_bytes", 0) for e in stats),
             "total_tx_bytes": sum(e.get("tx_bytes", 0) for e in stats),
             "total_bytes": sum(
-                e.get("bytes", e.get("rx_bytes", 0) + e.get("tx_bytes", 0)) for e in stats
+                e.get("bytes", e.get("rx_bytes", 0) + e.get("tx_bytes", 0))
+                for e in stats
             ),
         }
         if device_type == "uap" and stats:
-            summary["avg_clients"] = int(sum(e.get("num_sta", 0) for e in stats) / max(1, len(stats)))
+            summary["avg_clients"] = int(
+                sum(e.get("num_sta", 0) for e in stats) / max(1, len(stats))
+            )
             summary["max_clients"] = max(e.get("num_sta", 0) for e in stats)
-        
-        return {"success": True, "site": stats_manager._connection.site, "device_id": device_id, "device_name": device_name, "device_type": device_type, "duration": duration, "summary": summary, "stats": stats}
-    except Exception as e:
-        logger.error(f"Error getting device stats for {device_id}: {e}", exc_info=True)
+
+        return {
+            "success": True,
+            "site": getattr(
+                getattr(stats_manager, "_connection", None), "site", "unknown"
+            ),
+            "device_id": device_id,
+            "device_name": device_name,
+            "device_type": device_type,
+            "duration": duration,
+            "summary": summary,
+            "stats": stats
+        }
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
+        logger.error(
+            "Error getting device stats for %s: %s", device_id, e, exc_info=True
+        )
         return {"success": False, "error": str(e)}
 
 @server.tool(
@@ -120,9 +192,8 @@ async def get_device_stats(device_id: str, duration: str = "hourly") -> Dict[str
 async def get_top_clients(duration: str = "daily", limit: int = 10) -> Dict[str, Any]:
     """Implementation for getting top clients by usage."""
     try:
-        duration_hours = {"hourly": 1, "daily": 24, "weekly": 168, "monthly": 720}.get(duration, 1)
-        top_client_stats = await stats_manager.get_top_clients(duration_hours=duration_hours, limit=limit)
-        
+        top_client_stats = await stats_manager.get_top_clients(limit=limit)
+
         enhanced_clients = []
         for entry in top_client_stats:
             mac = entry.get("mac")
@@ -131,40 +202,62 @@ async def get_top_clients(duration: str = "daily", limit: int = 10) -> Dict[str,
                 details = await client_manager.get_client_details(mac)
                 if details:
                     raw = details.raw if hasattr(details, "raw") else details
-                    name = raw.get("name") or raw.get("hostname") or mac
+                    # Handle both dict and object types
+                    def safe_get(obj, key, default=None):
+                        if isinstance(obj, dict):
+                            return obj.get(key, default)
+                        return getattr(obj, key, default)
+                    name = safe_get(raw, "name") or safe_get(raw, "hostname") or mac
             entry["name"] = name
             enhanced_clients.append(entry)
-            
-        return {"success": True, "site": stats_manager._connection.site, "duration": duration, "limit": limit, "top_clients": enhanced_clients}
-    except Exception as e:
-        logger.error(f"Error getting top clients: {e}", exc_info=True)
+
+        return {
+            "success": True,
+            "site": getattr(
+                getattr(stats_manager, "_connection", None), "site", "unknown"
+            ),
+            "duration": duration,
+            "limit": limit,
+            "top_clients": enhanced_clients
+        }
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
+        logger.error("Error getting top clients: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}
 
 @server.tool(
     name="unifi_get_dpi_stats",
-    description="Get Deep Packet Inspection (DPI) statistics (applications and categories)"
+    description=(
+        "Get Deep Packet Inspection (DPI) statistics "
+        "(applications and categories)"
+    )
 )
 async def get_dpi_stats() -> Dict[str, Any]:
     """Implementation for getting DPI stats."""
     try:
         dpi_stats_result = await stats_manager.get_dpi_stats()
-        
+
         def serialize_dpi(item):
             return item.raw if hasattr(item, 'raw') else item
 
-        serialized_apps = [serialize_dpi(app) for app in dpi_stats_result.get("applications", [])]
-        serialized_cats = [serialize_dpi(cat) for cat in dpi_stats_result.get("categories", [])]
-        
+        serialized_apps = [
+            serialize_dpi(app) for app in dpi_stats_result.get("applications", [])
+        ]
+        serialized_cats = [
+            serialize_dpi(cat) for cat in dpi_stats_result.get("categories", [])
+        ]
+
         return {
-            "success": True, 
-            "site": stats_manager._connection.site, 
+            "success": True,
+            "site": getattr(
+                getattr(stats_manager, "_connection", None), "site", "unknown"
+            ),
             "dpi_stats": {
                 "applications": serialized_apps,
                 "categories": serialized_cats
             }
         }
-    except Exception as e:
-        logger.error(f"Error getting DPI stats: {e}", exc_info=True)
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
+        logger.error("Error getting DPI stats: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}
 
 @server.tool(
@@ -174,8 +267,19 @@ async def get_dpi_stats() -> Dict[str, Any]:
 async def get_alerts(limit: int = 10, include_archived: bool = False) -> Dict[str, Any]:
     """Implementation for getting alerts."""
     try:
-        alerts = await stats_manager.get_alerts(limit=limit, include_archived=include_archived)
-        return {"success": True, "site": stats_manager._connection.site, "limit": limit, "include_archived": include_archived, "alerts": alerts}
-    except Exception as e:
-        logger.error(f"Error getting alerts: {e}", exc_info=True)
-        return {"success": False, "error": str(e)} 
+        alerts = await stats_manager.get_alerts(include_archived=include_archived)
+        # Apply limit manually since the manager doesn't support it
+        if limit and len(alerts) > limit:
+            alerts = alerts[:limit]
+        return {
+            "success": True,
+            "site": getattr(
+                getattr(stats_manager, "_connection", None), "site", "unknown"
+            ),
+            "limit": limit,
+            "include_archived": include_archived,
+            "alerts": alerts
+        }
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
+        logger.error("Error getting alerts: %s", e, exc_info=True)
+        return {"success": False, "error": str(e)}

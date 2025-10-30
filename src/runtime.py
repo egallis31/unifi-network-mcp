@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Shared runtime objects for the UniFi‑Network MCP server.
 
 This module is the *single* source of truth for global singletons such as the
@@ -12,6 +10,8 @@ Downstream code (tool modules, tests, etc.) should import these via::
 Lazy factories (`get_*`) are provided so unit tests can substitute fakes by
 monkey‑patching before the first call.
 """
+
+from __future__ import annotations
 
 from functools import lru_cache
 from typing import Any
@@ -52,12 +52,14 @@ def get_server() -> FastMCP:
 
 
 def _unifi_settings() -> Any:
+    """Get UniFi settings from configuration."""
     cfg = get_config().unifi
     return cfg
 
 
 @lru_cache
 def get_connection_manager() -> ConnectionManager:
+    """Create and cache the connection manager."""
     cfg = _unifi_settings()
     return ConnectionManager(
         host=cfg.host,
@@ -71,41 +73,49 @@ def get_connection_manager() -> ConnectionManager:
 
 @lru_cache
 def get_client_manager() -> ClientManager:
+    """Create and cache the client manager."""
     return ClientManager(get_connection_manager())
 
 
 @lru_cache
 def get_device_manager() -> DeviceManager:
+    """Create and cache the device manager."""
     return DeviceManager(get_connection_manager())
 
 
 @lru_cache
 def get_stats_manager() -> StatsManager:
+    """Create and cache the stats manager."""
     return StatsManager(get_connection_manager(), get_client_manager())
 
 
 @lru_cache
 def get_qos_manager() -> QosManager:
+    """Create and cache the QoS manager."""
     return QosManager(get_connection_manager())
 
 
 @lru_cache
 def get_vpn_manager() -> VpnManager:
+    """Create and cache the VPN manager."""
     return VpnManager(get_connection_manager())
 
 
 @lru_cache
 def get_network_manager() -> NetworkManager:
+    """Create and cache the network manager."""
     return NetworkManager(get_connection_manager())
 
 
 @lru_cache
 def get_system_manager() -> SystemManager:
+    """Create and cache the system manager."""
     return SystemManager(get_connection_manager())
 
 
 @lru_cache
 def get_firewall_manager() -> FirewallManager:
+    """Create and cache the firewall manager."""
     return FirewallManager(get_connection_manager())
 
 
@@ -128,4 +138,5 @@ network_manager = get_network_manager()
 system_manager = get_system_manager()
 firewall_manager = get_firewall_manager()
 
-logger.debug("runtime.py: shared singletons initialised") 
+logger.debug("runtime.py: shared singletons initialised")
+

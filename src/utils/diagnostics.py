@@ -1,4 +1,5 @@
 from __future__ import annotations
+from aiounifi.errors import RequestError, ResponseError
 
 import json
 import logging
@@ -110,7 +111,15 @@ def _safe_json(data: Any, limit: int) -> str:
     return _truncate(as_text, limit)
 
 
-def log_tool_call(tool_name: str, args: Any, kwargs: Dict[str, Any], result: Any | None, duration_ms: float, error: Exception | None = None) -> None:
+def log_tool_call(
+                  tool_name: str,
+                  args: Any,
+                  kwargs: Dict[str,
+                  Any],
+                  result: Any | None,
+                  duration_ms: float,
+                  error: Exception | None = None
+) -> None:
     if not diagnostics_enabled():
         return
     cfg = _diag_cfg()
@@ -143,7 +152,7 @@ def wrap_tool(func, tool_name: str):
         try:
             res = await func(*args, **kwargs)
             return res
-        except Exception as e:  # noqa: BLE001 - we re-raise after logging
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001 - we re-raise after logging
             err = e
             raise
         finally:
@@ -156,7 +165,14 @@ def wrap_tool(func, tool_name: str):
     return _wrapper
 
 
-def log_api_request(method: str, path: str, payload: Any, response: Any, duration_ms: float, ok: bool) -> None:
+def log_api_request(
+                    method: str,
+                    path: str,
+                    payload: Any,
+                    response: Any,
+                    duration_ms: float,
+                    ok: bool
+) -> None:
     if not diagnostics_enabled():
         return
     cfg = _diag_cfg()
