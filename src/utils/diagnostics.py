@@ -111,6 +111,22 @@ def _safe_json(data: Any, limit: int) -> str:
     return _truncate(as_text, limit)
 
 
+def _safe_log(message: str, *args) -> None:
+    """Safely log a message, ignoring errors from closed file descriptors.
+    
+    During async shutdown, the stderr stream may be closed while background
+    tasks are still trying to log. This helper catches and silently ignores
+    those specific errors without hiding other logging issues.
+    """
+    try:
+        _logger.info(message, *args)
+    except (ValueError, OSError):
+        # Silently ignore all logging errors during diagnostics
+        # Most commonly: ValueError("I/O operation on closed file") during shutdown
+        # Diagnostics should never break the application
+        pass
+
+
 def log_tool_call(
                   tool_name: str,
                   args: Any,
@@ -139,7 +155,7 @@ def log_tool_call(
     # Serialize with redaction + truncation
     max_chars = int(cfg.get("max_payload_chars", 2000))
     text = _safe_json(parts, max_chars)
-    _logger.info("TOOL %s", text)
+    _safe_log("TOOL %s", text)
 
 
 def wrap_tool(func, tool_name: str):
@@ -185,6 +201,6 @@ def log_api_request(
         "request": payload,
         "response": response,
     }
-    _logger.info("API %s", _safe_json(entry, max_chars))
+    _safe_log("API %s", _safe_json(entry, max_chars))
 
 
