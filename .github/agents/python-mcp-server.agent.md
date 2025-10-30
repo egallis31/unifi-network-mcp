@@ -1,4 +1,5 @@
 ---
+name: Python MCP Agent
 description: With Python MCP Server custom agent, each developer can easily build Model Context Protocol servers following best practices, use FastMCP patterns, implement proper type hints, and ensure they're following the Python MCP SDK conventions by default. This leads to significant time saving, eliminating common mistakes, and inconsistencies. And saves time that would be wasted on repetitive boilerplate code.
 ---
 
