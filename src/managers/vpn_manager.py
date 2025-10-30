@@ -13,6 +13,11 @@ CACHE_PREFIX_VPN_CLIENTS = "vpn_clients"
 # remote-user-vpn: L2TP, OpenVPN, WireGuard server configurations
 VPN_SERVER_PURPOSES = ['remote-user-vpn']
 
+# VPN client network purpose types
+# vpn-client: Standard VPN clients (WireGuard, OpenVPN)
+# site-vpn: Site-to-site VPN connections
+VPN_CLIENT_PURPOSES = ['vpn-client', 'site-vpn']
+
 class VpnManager:
     """Manages VPN-related operations on the Unifi Controller."""
 
@@ -103,39 +108,52 @@ class VpnManager:
             return False
 
     async def get_vpn_clients(self) -> List[Dict[str, Any]]:
-        """Get list of active VPN clients for the current site."""
+        """Get list of VPN clients for the current site.
+        
+        VPN clients are managed as network configurations with specific purpose types.
+        This method retrieves networks and filters for VPN client purposes.
+        """
         cache_key = f"{CACHE_PREFIX_VPN_CLIENTS}_{self._connection.site}"
-        cached_data = self._connection.get_cached(cache_key, timeout=30)  # 30 second cache
+        cached_data = self._connection.get_cached(cache_key)
         if cached_data is not None:
             return cached_data
 
         try:
-            api_request = ApiRequest(method="get", path="/stat/vpn")
+            # VPN clients are part of network configurations
+            api_request = ApiRequest(method="get", path="/rest/networkconf")
             response = await self._connection.request(api_request)
-            clients = response if isinstance(response, list) else []
-            getattr(self._connection, "_update_cache", lambda k, v, **kw: None)(cache_key, clients, timeout=30)
+            
+            # Handle response format (could be list or dict with 'data' key)
+            networks_data = []
+            if isinstance(response, dict) and 'data' in response and isinstance(response['data'], list):
+                networks_data = response['data']
+            elif isinstance(response, list):
+                networks_data = response
+            
+            # Filter for VPN client purposes
+            clients = [
+                net for net in networks_data 
+                if net.get('purpose') in VPN_CLIENT_PURPOSES
+            ]
+            
+            getattr(self._connection, "_update_cache", lambda k, v: None)(cache_key, clients)
             return clients
         except (ValueError, TypeError, AttributeError, KeyError) as e:
             logger.error("Error getting VPN clients: %s", e)
             return []
 
     async def get_vpn_client_details(self, client_id: str) -> Optional[Dict[str, Any]]:
-        """Get detailed information for a specific VPN client.
-
-        Args:
-            client_id: ID of the client to get details for
-
-        Returns:
-            Client details if found, None otherwise
-        """
+        """Get detailed information for a specific VPN client."""
         vpn_clients = await self.get_vpn_clients()
         client = next((c for c in vpn_clients if c.get("_id") == client_id), None)
         if not client:
-            logger.warning("VPN client %s not found in fetched list.", client_id)
+            logger.warning("VPN client %s not found in cached/fetched list.", client_id)
         return client
 
     async def update_vpn_client_state(self, client_id: str, enabled: bool) -> bool:
         """Update the enabled state of a VPN client.
+        
+        Since VPN clients are network configurations, this updates the network config.
 
         Args:
             client_id: ID of the client to update
@@ -152,22 +170,17 @@ class VpnManager:
 
             update_data = {"enabled": enabled}
 
+            # VPN clients are network configurations, use networkconf endpoint
             api_request = ApiRequest(
                 method="put",
-                path=f"/rest/vpnclient/{client_id}",
+                path=f"/rest/networkconf/{client_id}",
                 data=update_data
             )
-
-            try:
-                await self._connection.request(api_request)
-                logger.info("Update state command sent for VPN client %s (enabled=%s)", client_id, enabled)
-                cache_key_to_invalidate = f"{CACHE_PREFIX_VPN_CLIENTS}_{self._connection.site}"
-                getattr(self._connection, "_invalidate_cache", lambda x: None)(cache_key_to_invalidate)
-                return True
-            except (ValueError, TypeError, AttributeError, KeyError) as e:
-                logger.error("API error updating VPN client state %s: %s", client_id, e)
-                return False
-
+            await self._connection.request(api_request)
+            logger.info("Update state command sent for VPN client %s (enabled=%s)", client_id, enabled)
+            cache_key_to_invalidate = f"{CACHE_PREFIX_VPN_CLIENTS}_{self._connection.site}"
+            getattr(self._connection, "_invalidate_cache", lambda x: None)(cache_key_to_invalidate)
+            return True
         except (ValueError, TypeError, AttributeError, KeyError) as e:
             logger.error("Error updating VPN client state %s: %s", client_id, e)
             return False
