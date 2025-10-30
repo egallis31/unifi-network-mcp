@@ -169,8 +169,7 @@ async def get_network_details(network_id: str) -> Dict[str, Any]:
                 "details": json.loads(json.dumps(network, default=str))
             }
         else:
-            return {"success": False, "
-                error": f"Network with ID '{network_id}' not found."}
+            return {"success": False, "error": f"Network with ID '{network_id}' not found."}
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error getting network details for %s: %s", network_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
@@ -357,13 +356,11 @@ async def create_network(
     purpose = validated_data.get("purpose")
     allowed_purposes = ["corporate", "guest", "wan", "vlan-only", "vpn-client", "vpn-server"]
     if purpose not in allowed_purposes:
-        return {"success": False, "
-            error": f"Invalid 'purpose': {purpose}. Must be one of {allowed_purposes}."}
+        return {"success": False, "error": f"Invalid 'purpose': {purpose}. Must be one of {allowed_purposes}."}
 
     # Validation based on purpose
     if purpose != 'vlan-only' and not validated_data.get("ip_subnet"):
-        return {"success": False, "
-            error": f"'ip_subnet' is required for network purpose '{purpose}'"}
+        return {"success": False, "error": f"'ip_subnet' is required for network purpose '{purpose}'"}
 
     if purpose == 'vlan-only' and not validated_data.get("vlan"):
         return {"success": False, "error": "'vlan' is required for network purpose 'vlan-only'."}
@@ -402,8 +399,7 @@ async def create_network(
         else:
             error_msg = created_network.get("error", "Manager returned failure") if isinstance(created_network, dict) else "Manager returned non-dict or failure"
             logger.error("Failed to create network '%s'. Reason: %s", validated_data.get('name'), error_msg)
-            return {"success": False, "
-                error": f"Failed to create network '{validated_data.get('name')}'. {error_msg}"}
+            return {"success": False, "error": f"Failed to create network '{validated_data.get('name')}'. {error_msg}"}
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error creating network '%s': %s", validated_data.get('name', 'unknown'), e, exc_info=True)
         return {"success": False, "error": str(e)}
@@ -711,8 +707,7 @@ async def create_wlan(
         else:
             error_msg = created_wlan.get("error", "Manager returned failure") if isinstance(created_wlan, dict) else "Manager returned non-dict or failure"
             logger.error("Failed to create WLAN '%s'. Reason: %s", validated_data.get('name'), error_msg)
-            return {"success": False, "
-                error": f"Failed to create WLAN '{validated_data.get('name')}'. {error_msg}"}
+            return {"success": False, "error": f"Failed to create WLAN '{validated_data.get('name')}'. {error_msg}"}
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error creating WLAN '%s': %s", validated_data.get('name', 'unknown'), e, exc_info=True)
         return {"success": False, "error": str(e)}

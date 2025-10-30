@@ -152,8 +152,7 @@ async def get_traffic_route_details(route_id: str) -> Dict[str, Any]:
         route_obj = next((r for r in routes if hasattr(r, "raw") and isinstance(r.raw, dict) and r.raw.get("_id") == route_id), None)
 
         if not route_obj or not route_obj.raw:
-            return {"success": False, "
-                error": f"Traffic route '{route_id}' not found or has invalid data."}
+            return {"success": False, "error": f"Traffic route '{route_id}' not found or has invalid data."}
 
         # Return raw details - ensure serializable
         return {"success": True, "route_id": route_id, "details": json.loads(json.dumps(route_obj.raw, default=str))}
@@ -312,8 +311,7 @@ async def update_traffic_route(
         routes = await firewall_manager.get_traffic_routes()
         existing_route_obj = next((r for r in routes if hasattr(r, "raw") and isinstance(r.raw, dict) and r.raw.get("_id") == route_id), None)
         if not existing_route_obj or not existing_route_obj.raw:
-            return {"success": False, "
-                error": f"Traffic route '{route_id}' not found for update."}
+            return {"success": False, "error": f"Traffic route '{route_id}' not found for update."}
 
         route_name = existing_route_obj.raw.get("name", route_id) # For logging
         updated_fields_list = list(validated_data.keys())

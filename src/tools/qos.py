@@ -145,8 +145,7 @@ async def get_qos_rule_details(rule_id: str) -> Dict[str, Any]:
             site = _get_site()
             return {"success": True, "site": site, "rule_id": rule_id, "details": json.loads(json.dumps(rule, default=str))}
         else:
-            return {"success": False, "
-                error": f"QoS rule with ID '{rule_id}' not found."}
+            return {"success": False, "error": f"QoS rule with ID '{rule_id}' not found."}
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         logger.error("Error getting QoS rule %s: %s", rule_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
@@ -193,8 +192,7 @@ async def toggle_qos_rule_enabled(rule_id: str, confirm: bool = False) -> Dict[s
         # Fetch the rule first to determine current state and name
         rule = await qos_manager.get_qos_rule_details(rule_id)
         if not rule:
-            return {"success": False, "
-                error": f"QoS rule with ID '{rule_id}' not found."}
+            return {"success": False, "error": f"QoS rule with ID '{rule_id}' not found."}
 
         current_state = rule.get("enabled", False)
         new_state = not current_state
@@ -405,8 +403,7 @@ async def create_qos_rule(
         else:
             error_msg = created_rule.get("error", "Manager returned failure") if isinstance(created_rule, dict) else "Manager returned non-dict or failure"
             logger.error("Failed to create QoS rule '%s'. Reason: %s", rule_name, error_msg)
-            return {"success": False, "
-                error": f"Failed to create QoS rule '{rule_name}'. {error_msg}"}
+            return {"success": False, "error": f"Failed to create QoS rule '{rule_name}'. {error_msg}"}
 
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         logger.error("Error creating QoS rule '%s': %s", rule_name, e, exc_info=True)
