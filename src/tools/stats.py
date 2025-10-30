@@ -271,6 +271,13 @@ async def get_alerts(limit: int = 10, include_archived: bool = False) -> Dict[st
         # Apply limit manually since the manager doesn't support it
         if limit and len(alerts) > limit:
             alerts = alerts[:limit]
+        
+        # Serialize Event objects to dicts using their .raw attribute
+        serialized_alerts = [
+            event.raw if hasattr(event, 'raw') else event
+            for event in alerts
+        ]
+        
         return {
             "success": True,
             "site": getattr(
@@ -278,7 +285,7 @@ async def get_alerts(limit: int = 10, include_archived: bool = False) -> Dict[st
             ),
             "limit": limit,
             "include_archived": include_archived,
-            "alerts": alerts
+            "alerts": serialized_alerts
         }
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
         logger.error("Error getting alerts: %s", e, exc_info=True)

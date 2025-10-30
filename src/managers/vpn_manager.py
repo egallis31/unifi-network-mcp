@@ -9,6 +9,10 @@ logger = logging.getLogger("unifi-network-mcp")
 CACHE_PREFIX_VPN_SERVERS = "vpn_servers"
 CACHE_PREFIX_VPN_CLIENTS = "vpn_clients"
 
+# VPN server network purpose types
+# remote-user-vpn: L2TP, OpenVPN, WireGuard server configurations
+VPN_SERVER_PURPOSES = ['remote-user-vpn']
+
 class VpnManager:
     """Manages VPN-related operations on the Unifi Controller."""
 
@@ -21,16 +25,34 @@ class VpnManager:
         self._connection = connection_manager
 
     async def get_vpn_servers(self) -> List[Dict[str, Any]]:
-        """Get list of VPN servers for the current site."""
+        """Get list of VPN servers for the current site.
+        
+        VPN servers are managed as network configurations with specific purpose types.
+        This method retrieves networks and filters for VPN server purposes.
+        """
         cache_key = f"{CACHE_PREFIX_VPN_SERVERS}_{self._connection.site}"
         cached_data = self._connection.get_cached(cache_key)
         if cached_data is not None:
             return cached_data
 
         try:
-            api_request = ApiRequest(method="get", path="/rest/vpnserver")
+            # VPN servers are part of network configurations
+            api_request = ApiRequest(method="get", path="/rest/networkconf")
             response = await self._connection.request(api_request)
-            servers = response if isinstance(response, list) else []
+            
+            # Handle response format (could be list or dict with 'data' key)
+            networks_data = []
+            if isinstance(response, dict) and 'data' in response and isinstance(response['data'], list):
+                networks_data = response['data']
+            elif isinstance(response, list):
+                networks_data = response
+            
+            # Filter for VPN server purposes
+            servers = [
+                net for net in networks_data 
+                if net.get('purpose') in VPN_SERVER_PURPOSES
+            ]
+            
             getattr(self._connection, "_update_cache", lambda k, v: None)(cache_key, servers)
             return servers
         except (ValueError, TypeError, AttributeError, KeyError) as e:
@@ -47,6 +69,8 @@ class VpnManager:
 
     async def update_vpn_server_state(self, server_id: str, enabled: bool) -> bool:
         """Update the enabled state of a VPN server.
+        
+        Since VPN servers are network configurations, this updates the network config.
 
         Args:
             server_id: ID of the server to update
@@ -63,9 +87,10 @@ class VpnManager:
 
             update_data = {"enabled": enabled}
 
+            # VPN servers are network configurations, use networkconf endpoint
             api_request = ApiRequest(
                 method="put",
-                path=f"/rest/vpnserver/{server_id}",
+                path=f"/rest/networkconf/{server_id}",
                 data=update_data
             )
             await self._connection.request(api_request)
