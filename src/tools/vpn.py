@@ -69,13 +69,11 @@ async def update_vpn_client_state(client_id: str, enabled: bool) -> Dict[str, An
             client_details = await vpn_manager.get_vpn_client_details(client_id)
             name = client_details.get("name", client_id) if client_details else client_id
             state = "enabled" if enabled else "disabled"
-            return {"success": True, "
-                message": f"VPN client '{name}' ({client_id}) {state}."}
+            return {"success": True, "message": f"VPN client '{name}' ({client_id}) {state}."}
         else:
             client_details = await vpn_manager.get_vpn_client_details(client_id)
             name = client_details.get("name", client_id) if client_details else client_id
-        return {"success": False, "
-            error": f"Failed to update state for VPN client '{name}'."}
+        return {"success": False, "error": f"Failed to update state for VPN client '{name}'."}
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         logger.error("Error updating state for VPN client %s: %s", client_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
@@ -135,13 +133,11 @@ async def update_vpn_server_state(server_id: str, enabled: bool) -> Dict[str, An
             server_details = await vpn_manager.get_vpn_server_details(server_id)
             name = server_details.get("name", server_id) if server_details else server_id
             state = "enabled" if enabled else "disabled"
-            return {"success": True, "
-                message": f"VPN server '{name}' ({server_id}) {state}."}
+            return {"success": True, "message": f"VPN server '{name}' ({server_id}) {state}."}
         else:
             server_details = await vpn_manager.get_vpn_server_details(server_id)
             name = server_details.get("name", server_id) if server_details else server_id
-        return {"success": False, "
-            error": f"Failed to update state for VPN server '{name}'."}
+        return {"success": False, "error": f"Failed to update state for VPN server '{name}'."}
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         logger.error("Error updating state for VPN server %s: %s", server_id, e, exc_info=True)
         return {"success": False, "error": str(e)}

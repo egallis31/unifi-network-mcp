@@ -122,8 +122,7 @@ async def get_port_forward(port_forward_id: str) -> Dict[str, Any]: # Removed co
         rule = rule_obj.raw if (rule_obj and hasattr(rule_obj, "raw")) else rule_obj
 
         if not rule:
-            return {"success": False, "
-                error": f"Port forwarding rule '{port_forward_id}' not found"}
+            return {"success": False, "error": f"Port forwarding rule '{port_forward_id}' not found"}
 
         # Return full details, ensure serializable
         return {"success": True, "port_forward_id": port_forward_id, "details": json.loads(json.dumps(rule, default=str))}
@@ -175,8 +174,7 @@ async def toggle_port_forward(port_forward_id: str, confirm: bool = False) -> Di
         rule_obj = await firewall_manager.get_port_forward_by_id(port_forward_id)
         rule = rule_obj.raw if (rule_obj and hasattr(rule_obj, "raw")) else rule_obj
         if not rule:
-            return {"success": False, "
-                error": f"Port forwarding rule '{port_forward_id}' not found"}
+            return {"success": False, "error": f"Port forwarding rule '{port_forward_id}' not found"}
 
         rule_name = getattr(rule, "name", port_forward_id)
         current_state = getattr(rule, "enabled", False)
@@ -196,18 +194,14 @@ async def toggle_port_forward(port_forward_id: str, confirm: bool = False) -> Di
 
         if success:
             logger.info("Successfully toggled port forward '%s' (%s) to %s", rule_name, port_forward_id, new_state)
-            return {"success": True, "
-                port_forward_id": port_forward_id, "
-                enabled": new_state, "
-                message": f"Port forward '{rule_name}' toggled to {'enabled' if new_state else 'disabled'}."}
+            return {"success": True, "port_forward_id": port_forward_id, "enabled": new_state, "message": f"Port forward '{rule_name}' toggled to {'enabled' if new_state else 'disabled'}."}
         else:
             # Re-fetch to check the state if the update call failed
             rule_after_toggle_obj = await firewall_manager.get_port_forward_by_id(port_forward_id)
             rule_after_toggle = rule_after_toggle_obj.raw if (rule_after_toggle_obj and hasattr(rule_after_toggle_obj, "raw")) else rule_after_toggle_obj
             state_after = getattr(rule_after_toggle, "enabled", "unknown") if rule_after_toggle else "unknown"
             logger.error("Failed to toggle port forward '%s' (%s). State after attempt: %s. Manager update returned false.", rule_name, port_forward_id, state_after)
-            return {"success": False, "
-                error": f"Failed to toggle port forward '{rule_name}'. Check server logs."}
+            return {"success": False, "error": f"Failed to toggle port forward '{rule_name}'. Check server logs."}
 
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error toggling port forward %s: %s", port_forward_id, e, exc_info=True)
@@ -305,8 +299,7 @@ async def create_port_forward(
         else:
             error_msg = result.get("error", "Manager returned failure") if isinstance(result, dict) else "Manager returned failure"
             logger.error("Failed to create port forward '%s'. Reason: %s", validated_data['name'], error_msg)
-            return {"success": False, "
-                error": f"Failed to create port forward '{validated_data['name']}'. {error_msg}"}
+            return {"success": False, "error": f"Failed to create port forward '{validated_data['name']}'. {error_msg}"}
 
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error creating port forward '%s': %s", validated_data.get('name', 'unknown'), e, exc_info=True)
@@ -397,8 +390,7 @@ async def update_port_forward(
         existing_rule_obj = await firewall_manager.get_port_forward_by_id(port_forward_id)
         existing_rule = existing_rule_obj.raw if (existing_rule_obj and hasattr(existing_rule_obj, "raw")) else None
         if not existing_rule:
-            return {"success": False, "
-                error": f"Port forwarding rule '{port_forward_id}' not found"}
+            return {"success": False, "error": f"Port forwarding rule '{port_forward_id}' not found"}
 
         rule_name = existing_rule.get("name", port_forward_id)
 

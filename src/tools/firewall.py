@@ -142,8 +142,7 @@ async def get_firewall_policy_details(
         policies_raw = [p.raw if hasattr(p, "raw") else p for p in policies]
         policy = next((p for p in policies_raw if getattr(p, "_id", None) == policy_id), None)
         if not policy:
-            return {"success": False, "
-                error": f"Firewall policy with ID '{policy_id}' not found."}
+            return {"success": False, "error": f"Firewall policy with ID '{policy_id}' not found."}
         return {"success": True, "policy_id": policy_id, "details": json.loads(json.dumps(policy, default=str))}
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error getting firewall policy details for %s: %s", policy_id, e, exc_info=True)
@@ -192,8 +191,7 @@ async def toggle_firewall_policy(
         policies = await firewall_manager.get_firewall_policies(include_predefined=True)
         policy_obj = next((p for p in policies if p.id == policy_id), None)
         if not policy_obj or not policy_obj.raw:
-            return {"success": False, "
-                error": f"Firewall policy with ID '{policy_id}' not found."}
+            return {"success": False, "error": f"Firewall policy with ID '{policy_id}' not found."}
         policy = policy_obj.raw
 
         current_state = policy.get("enabled", False)

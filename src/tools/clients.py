@@ -347,8 +347,7 @@ async def unauthorize_guest(mac_address: str, confirm: bool = False) -> Dict[str
                 "success": True,
                 "message": f"Guest {mac_address} authorization revoked successfully."
             }
-        return {"success": False, "
-            error": f"Failed to unauthorize guest {mac_address}."}
+        return {"success": False, "error": f"Failed to unauthorize guest {mac_address}."}
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
         logger.error("Error unauthorizing guest %s: %s", mac_address, e, exc_info=True)
         return {"success": False, "error": str(e)}
