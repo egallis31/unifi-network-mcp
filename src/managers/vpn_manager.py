@@ -9,6 +9,10 @@ logger = logging.getLogger("unifi-network-mcp")
 CACHE_PREFIX_VPN_SERVERS = "vpn_servers"
 CACHE_PREFIX_VPN_CLIENTS = "vpn_clients"
 
+# VPN server network purpose types
+# remote-user-vpn: L2TP, OpenVPN, WireGuard server configurations
+VPN_SERVER_PURPOSES = ['remote-user-vpn']
+
 class VpnManager:
     """Manages VPN-related operations on the Unifi Controller."""
 
@@ -44,11 +48,9 @@ class VpnManager:
                 networks_data = response
             
             # Filter for VPN server purposes
-            # VPN server purposes: remote-user-vpn (L2TP, OpenVPN, WireGuard servers)
-            vpn_server_purposes = ['remote-user-vpn']
             servers = [
                 net for net in networks_data 
-                if net.get('purpose') in vpn_server_purposes
+                if net.get('purpose') in VPN_SERVER_PURPOSES
             ]
             
             getattr(self._connection, "_update_cache", lambda k, v: None)(cache_key, servers)
