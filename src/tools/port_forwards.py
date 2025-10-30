@@ -183,8 +183,14 @@ async def toggle_port_forward(port_forward_id: str, confirm: bool = False) -> Di
         if not rule:
             return {"success": False, "error": f"Port forwarding rule '{port_forward_id}' not found"}
 
-        rule_name = getattr(rule, "name", port_forward_id)
-        current_state = getattr(rule, "enabled", False)
+        def safe_get_toggle(obj, key, default=None):
+            """Safely get a value from either a dict or object."""
+            if isinstance(obj, dict):
+                return obj.get(key, default)
+            return getattr(obj, key, default)
+
+        rule_name = safe_get_toggle(rule, "name", port_forward_id)
+        current_state = safe_get_toggle(rule, "enabled", False)
         new_state = not current_state
 
         logger.info("Attempting to toggle port forward '%s' (%s) to %s", rule_name, port_forward_id, new_state)
@@ -206,7 +212,7 @@ async def toggle_port_forward(port_forward_id: str, confirm: bool = False) -> Di
             # Re-fetch to check the state if the update call failed
             rule_after_toggle_obj = await firewall_manager.get_port_forward_by_id(port_forward_id)
             rule_after_toggle = rule_after_toggle_obj.raw if (rule_after_toggle_obj and hasattr(rule_after_toggle_obj, "raw")) else rule_after_toggle_obj
-            state_after = getattr(rule_after_toggle, "enabled", "unknown") if rule_after_toggle else "unknown"
+            state_after = safe_get_toggle(rule_after_toggle, "enabled", "unknown") if rule_after_toggle else "unknown"
             logger.error("Failed to toggle port forward '%s' (%s). State after attempt: %s. Manager update returned false.", rule_name, port_forward_id, state_after)
             return {"success": False, "error": f"Failed to toggle port forward '{rule_name}'. Check server logs."}
 
