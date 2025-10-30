@@ -229,6 +229,7 @@ The server merges settings from **environment variables**, an optional `.env` fi
 | `UNIFI_PORT` | HTTPS port (default `443`) |
 | `UNIFI_SITE` | Site name (default `default`) |
 | `UNIFI_VERIFY_SSL` | Set to `false` if using self-signed certs |
+| `UNIFI_MCP_DEBUG` | Set `true` to enable debug logging in FastMCP server (default `false`) |
 | `UNIFI_MCP_READ_ONLY_MODE` | Set `true` to disable all mutating tools (create, update, toggle, etc.) - only read/list/get operations will be available (default `false`) |
 | `UNIFI_MCP_HTTP_ENABLED` | Set `true` to enable optional HTTP server (default `false`) |
 | `UNIFI_MCP_HTTP_TRANSPORT` | HTTP transport type: `http` (recommended) or `sse` (legacy) |
