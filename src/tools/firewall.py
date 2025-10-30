@@ -595,13 +595,23 @@ async def create_simple_firewall_policy(
     description="List controller firewall zones (V2 API)."
 )
 async def list_firewall_zones() -> Dict[str, Any]:
-    zones = await firewall_manager.get_firewall_zones()
-    return {"success": True, "count": len(zones), "zones": zones}
+    """Implementation for listing firewall zones."""
+    try:
+        zones = await firewall_manager.get_firewall_zones()
+        return {"success": True, "count": len(zones), "zones": zones}
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001
+        logger.error("Error listing firewall zones: %s", e, exc_info=True)
+        return {"success": False, "error": str(e)}
 
 @server.tool(
     name="unifi_list_ip_groups",
     description="List IP groups configured on the controller (V2 API)."
 )
 async def list_ip_groups() -> Dict[str, Any]:
-    groups = await firewall_manager.get_ip_groups()
-    return {"success": True, "count": len(groups), "ip_groups": groups}
+    """Implementation for listing IP groups."""
+    try:
+        groups = await firewall_manager.get_ip_groups()
+        return {"success": True, "count": len(groups), "ip_groups": groups}
+    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001
+        logger.error("Error listing IP groups: %s", e, exc_info=True)
+        return {"success": False, "error": str(e)}
