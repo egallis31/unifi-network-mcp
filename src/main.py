@@ -12,6 +12,7 @@ import logging
 import os
 import sys
 import traceback
+from typing import Any, Callable
 
 from aiounifi.errors import RequestError, ResponseError
 from src.bootstrap import logger  # ensures logging/env setup early
@@ -67,8 +68,24 @@ def is_read_only_mode() -> bool:
         return read_only_raw.strip().lower() in {"1", "true", "yes", "on"}
     return bool(read_only_raw)
 
-def permissioned_tool(*d_args, **d_kwargs):  # acts like @server.tool
-    """Decorator that only registers the tool if permission allows."""
+def permissioned_tool(*d_args: Any, **d_kwargs: Any) -> Callable:
+    """Decorator that only registers the tool if permission allows.
+    
+    This decorator wraps the FastMCP @server.tool decorator to add:
+    - Permission checking based on category and action
+    - Read-only mode filtering to disable mutating operations
+    - Diagnostic logging when enabled
+    
+    Args:
+        *d_args: Positional arguments passed to @server.tool
+        **d_kwargs: Keyword arguments including:
+            - permission_category: Category for permission checking
+            - permission_action: Action for permission checking
+            - Other arguments passed to @server.tool
+    
+    Returns:
+        Decorator function that registers the tool if allowed
+    """
 
     tool_name = (
         d_kwargs.get("name") if d_kwargs.get("name")
@@ -78,7 +95,7 @@ def permissioned_tool(*d_args, **d_kwargs):  # acts like @server.tool
     category = d_kwargs.pop("permission_category", None)
     action = d_kwargs.pop("permission_action", None)
 
-    def decorator(func):
+    def decorator(func: Callable) -> Callable:
         """Inner decorator actually registering the tool if allowed."""
         nonlocal category, action
 
@@ -97,7 +114,7 @@ def permissioned_tool(*d_args, **d_kwargs):  # acts like @server.tool
 
         try:
             allowed = parse_permission(config.permissions, category, action)
-        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as exc:  # mis‑config should not crash server
+        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as exc:
             logger.error("Permission check failed for tool %s: %s", tool_name, exc)
             allowed = False
 
@@ -154,13 +171,6 @@ logger.info("Using global Manager instances.")
 
 async def main_async():
     """Main asynchronous function to setup and run the server."""
-
-    # ---- VERY EARLY ASYNC LOG TEST ----
-    try:
-        logger.critical("ASYNCHRONOUS main_async() FUNCTION ENTERED - TEST MESSAGE")
-    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
-        print(f"Logging in main_async() failed: {e}", file=sys.stderr)  # Fallback
-    # ---- END VERY EARLY ASYNC LOG TEST ----
 
     # --- Add asyncio global exception handler ---
     loop = asyncio.get_event_loop()
@@ -295,14 +305,7 @@ async def main_async():
 
 def main():
     """Synchronous entry point."""
-    # ---- VERY EARLY LOG TEST ----
-    try:
-        logger.critical("SYNCHRONOUS main() FUNCTION ENTERED - TEST MESSAGE")
-    except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
-        print(f"Logging in main() failed: {e}", file=sys.stderr)  # Fallback
-    # ---- END VERY EARLY LOG TEST ----
-
-    logger.debug("Starting main()")  # This uses the logger from bootstrap via global scope
+    logger.info("Starting UniFi Network MCP Server")
     try:
         asyncio.run(main_async())
     except KeyboardInterrupt:
