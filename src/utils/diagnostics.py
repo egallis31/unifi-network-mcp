@@ -182,8 +182,8 @@ def log_api_request(
         "path": path,
         "ok": ok,
         "duration_ms": int(duration_ms),
-        "request": json.loads(_safe_json(payload, max_chars)) if payload is not None else None,
-        "response": json.loads(_safe_json(response, max_chars)) if response is not None else None,
+        "request": payload,
+        "response": response,
     }
     _logger.info("API %s", _safe_json(entry, max_chars))
 
