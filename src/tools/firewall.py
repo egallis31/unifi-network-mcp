@@ -67,15 +67,21 @@ async def list_firewall_policies(
         policies = await firewall_manager.get_firewall_policies(include_predefined=include_predefined)
         policies_raw = [p.raw if hasattr(p, "raw") else p for p in policies]
 
+        def safe_get(obj, key, default=None):
+            """Safely get a value from either a dict or object."""
+            if isinstance(obj, dict):
+                return obj.get(key, default)
+            return getattr(obj, key, default)
+
         formatted_policies = [
             {
-                "id": getattr(p, "_id", None),
-                "name": getattr(p, "name", None),
-                "enabled": getattr(p, "enabled", None),
-                "action": getattr(p, "action", None),
-                "rule_index": getattr(p, "index", getattr(p, "rule_index", None)),
-                "ruleset": getattr(p, "ruleset", None),
-                "description": getattr(p, "description", getattr(p, "desc", ""))
+                "id": safe_get(p, "_id"),
+                "name": safe_get(p, "name"),
+                "enabled": safe_get(p, "enabled"),
+                "action": safe_get(p, "action"),
+                "rule_index": safe_get(p, "index") or safe_get(p, "rule_index"),
+                "ruleset": safe_get(p, "ruleset"),
+                "description": safe_get(p, "description") or safe_get(p, "desc", "")
             }
             for p in policies_raw
         ]
@@ -140,7 +146,14 @@ async def get_firewall_policy_details(
             return {"success": False, "error": "policy_id is required"}
         policies = await firewall_manager.get_firewall_policies(include_predefined=True)
         policies_raw = [p.raw if hasattr(p, "raw") else p for p in policies]
-        policy = next((p for p in policies_raw if getattr(p, "_id", None) == policy_id), None)
+        
+        def safe_get(obj, key, default=None):
+            """Safely get a value from either a dict or object."""
+            if isinstance(obj, dict):
+                return obj.get(key, default)
+            return getattr(obj, key, default)
+        
+        policy = next((p for p in policies_raw if safe_get(p, "_id") == policy_id), None)
         if not policy:
             return {"success": False, "error": f"Firewall policy with ID '{policy_id}' not found."}
         return {"success": True, "policy_id": policy_id, "details": json.loads(json.dumps(policy, default=str))}

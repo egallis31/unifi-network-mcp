@@ -59,15 +59,22 @@ async def list_port_forwards() -> Dict[str, Any]: # Removed context, adjusted re
     try:
         rules = await firewall_manager.get_port_forwards()
         rules_raw = [r.raw if hasattr(r, "raw") else r for r in rules]
+        
+        def safe_get(obj, key, default=None):
+            """Safely get a value from either a dict or object."""
+            if isinstance(obj, dict):
+                return obj.get(key, default)
+            return getattr(obj, key, default)
+        
         port_forward_list = [
             {
-                "id": getattr(r, "_id", None),
-                "name": getattr(r, "name", None),
-                "enabled": getattr(r, "enabled", None),
-                "src_port": getattr(r, "dst_port", None), # Note: UniFi uses dst_port for external
-                "dst_port": getattr(r, "fwd_port", None), # Note: UniFi uses fwd_port for internal
-                "protocol": getattr(r, "protocol", None),
-                "dest_ip": getattr(r, "fwd_ip", None)
+                "id": safe_get(r, "_id"),
+                "name": safe_get(r, "name"),
+                "enabled": safe_get(r, "enabled"),
+                "src_port": safe_get(r, "dst_port"), # Note: UniFi uses dst_port for external
+                "dst_port": safe_get(r, "fwd_port"), # Note: UniFi uses fwd_port for internal
+                "protocol": safe_get(r, "protocol"),
+                "dest_ip": safe_get(r, "fwd_ip")
             }
             for r in rules_raw
         ]

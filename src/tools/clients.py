@@ -38,10 +38,16 @@ async def list_clients(
 
         clients_raw = [_client_to_dict(c) for c in clients]
 
+        # Helper for safe access to dict or object attributes
+        def safe_get_for_filter(obj, key, default=None):
+            if isinstance(obj, dict):
+                return obj.get(key, default)
+            return getattr(obj, key, default)
+
         if filter_type == "wireless":
-            clients_raw = [c for c in clients_raw if not getattr(c, "is_wired", False)]
+            clients_raw = [c for c in clients_raw if not safe_get_for_filter(c, "is_wired", False)]
         elif filter_type == "wired":
-            clients_raw = [c for c in clients_raw if getattr(c, "is_wired", False)]
+            clients_raw = [c for c in clients_raw if safe_get_for_filter(c, "is_wired", False)]
 
         clients_raw = clients_raw[:limit]
 
