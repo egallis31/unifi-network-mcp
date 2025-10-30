@@ -29,6 +29,44 @@ from src.utils.permissions import parse_permission  # noqa: E402
 
 _original_tool_decorator = server.tool  # keep reference to wrap later
 
+def is_mutating_tool(tool_name: str) -> bool:
+    """Check if a tool performs mutating operations.
+    
+    Mutating tools include:
+    - create_*, update_*, toggle_* operations
+    - block, unblock, rename, force_reconnect operations
+    - authorize, unauthorize operations
+    - reboot, adopt, upgrade operations
+    """
+    if not tool_name:
+        return False
+    
+    # Patterns for mutating operations
+    mutating_prefixes = ("create_", "update_", "toggle_")
+    mutating_operations = (
+        "block_", "unblock_", "rename_", "force_reconnect_",
+        "authorize_", "unauthorize_",
+        "reboot_", "adopt_", "upgrade_"
+    )
+    
+    # Check if tool name contains mutating patterns
+    tool_lower = tool_name.lower()
+    for prefix in mutating_prefixes:
+        if prefix in tool_lower:
+            return True
+    for operation in mutating_operations:
+        if operation in tool_lower:
+            return True
+    
+    return False
+
+def is_read_only_mode() -> bool:
+    """Check if read-only mode is enabled in the configuration."""
+    read_only_raw = config.server.get("read_only_mode", False)
+    if isinstance(read_only_raw, str):
+        return read_only_raw.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(read_only_raw)
+
 def permissioned_tool(*d_args, **d_kwargs):  # acts like @server.tool
     """Decorator that only registers the tool if permission allows."""
 
@@ -43,6 +81,15 @@ def permissioned_tool(*d_args, **d_kwargs):  # acts like @server.tool
     def decorator(func):
         """Inner decorator actually registering the tool if allowed."""
         nonlocal category, action
+
+        # Check read-only mode first - skip all mutating tools
+        if is_read_only_mode() and is_mutating_tool(tool_name):
+            logger.info(
+                "[read-only mode] Skipping registration of mutating tool '%s'",
+                tool_name
+            )
+            # Still return original function (unregistered) for import side-effects/testing
+            return func
 
         # Fast path: no permissions requested, just register.
         if not category or not action:
@@ -86,6 +133,15 @@ except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as 
 
 # Config is loaded globally via bootstrap helper
 logger.info("Loaded configuration globally.")
+
+# Log read-only mode status
+if is_read_only_mode():
+    logger.warning(
+        "⚠️  READ-ONLY MODE ENABLED - All mutating tools (create, update, toggle, etc.) "
+        "will be disabled. Only read/list/get operations are available."
+    )
+else:
+    logger.info("Read-only mode is disabled. All tools available based on permissions.")
 
 # --- Global Connection and Managers ---
 # ConnectionManager is instantiated globally by src.runtime import

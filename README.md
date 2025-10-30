@@ -229,6 +229,7 @@ The server merges settings from **environment variables**, an optional `.env` fi
 | `UNIFI_PORT` | HTTPS port (default `443`) |
 | `UNIFI_SITE` | Site name (default `default`) |
 | `UNIFI_VERIFY_SSL` | Set to `false` if using self-signed certs |
+| `UNIFI_MCP_READ_ONLY_MODE` | Set `true` to disable all mutating tools (create, update, toggle, etc.) - only read/list/get operations will be available (default `false`) |
 | `UNIFI_MCP_HTTP_ENABLED` | Set `true` to enable optional HTTP server (default `false`) |
 | `UNIFI_MCP_HTTP_TRANSPORT` | HTTP transport type: `http` (recommended) or `sse` (legacy) |
 | `UNIFI_MCP_HTTP_PATH` | HTTP endpoint path (default `/mcp`, applies to HTTP transport only) |
@@ -362,10 +363,30 @@ python devtools/dev_console.py
 
 These tools will give any LLM or agent configured to use them full access to your UniFi Network Controller. While this can be for very useful for analysis and configuration of your network, there is potential for abuse if not configured correctly. By default, all tools that can modify state or disrupt availability are disabled, and must be explicitly enabled in the `src/config/config.yaml` file. When you have a use case for a tool, like updating a firewall policy, you must explicitly enable it in the `src/config/config.yaml` and restart the MCP server. The tools are build directly on the UniFi Network Controller API, so they can operate with similar functionality to the UniFi web interface.
 
+### Read-Only Mode
+
+For enhanced security, especially when using cloud-based LLMs, you can enable **read-only mode** to completely disable all mutating operations:
+
+```bash
+# Via environment variable
+export UNIFI_MCP_READ_ONLY_MODE=true
+
+# Or in config.yaml
+server:
+  read_only_mode: true
+```
+
+When enabled, read-only mode prevents registration of all tools that modify state, including:
+- All `create_*`, `update_*`, and `toggle_*` operations
+- Client operations: `block_client`, `unblock_client`, `rename_client`, `force_reconnect_client`, `authorize_guest`, `unauthorize_guest`
+- Device operations: `reboot_device`, `rename_device`, `adopt_device`, `upgrade_device`
+
+Only read operations (`list_*`, `get_*`, stats, and search tools) remain available, making it safe for analysis and monitoring without risk of unintended changes.
+
 ### General Recommendations
 
 * Use LM Studio or Ollama run tool capable models locally if possible. This is the recommended and safest way to use these tools.
-* If you opt to use cloud based LLMs, like Claude, Gemini, and ChatGPT, for analysis. Enable read-only tools, which is the default configuration.
+* If you opt to use cloud based LLMs, like Claude, Gemini, and ChatGPT, for analysis, **enable read-only mode** (`UNIFI_MCP_READ_ONLY_MODE=true`).
 * Create, update, and removal tools should be used with caution and only enabled when necessary.
 * Do not host outside of your network unless using a secure reverse proxy like Cloudflare Tunnel or Ngrok. Even then, an additional layer of authentication is recommended.
 
