@@ -139,7 +139,11 @@ def log_tool_call(
     # Serialize with redaction + truncation
     max_chars = int(cfg.get("max_payload_chars", 2000))
     text = _safe_json(parts, max_chars)
-    _logger.info("TOOL %s", text)
+    try:
+        _logger.info("TOOL %s", text)
+    except (ValueError, OSError):
+        # Silently ignore logging errors (e.g., closed file during shutdown)
+        pass
 
 
 def wrap_tool(func, tool_name: str):
@@ -185,6 +189,10 @@ def log_api_request(
         "request": payload,
         "response": response,
     }
-    _logger.info("API %s", _safe_json(entry, max_chars))
+    try:
+        _logger.info("API %s", _safe_json(entry, max_chars))
+    except (ValueError, OSError):
+        # Silently ignore logging errors (e.g., closed file during shutdown)
+        pass
 
 
