@@ -43,7 +43,11 @@ def get_config():
 @lru_cache
 def get_server() -> FastMCP:
     """Create the FastMCP server instance exactly once."""
-    return FastMCP(name="unifi-network-mcp", debug=True)
+    # Debug mode should be controlled by configuration, not hardcoded
+    debug_mode = get_config().server.get("debug", False)
+    if isinstance(debug_mode, str):
+        debug_mode = debug_mode.strip().lower() in {"1", "true", "yes", "on"}
+    return FastMCP(name="unifi-network-mcp", debug=bool(debug_mode))
 
 
 # ---------------------------------------------------------------------------

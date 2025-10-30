@@ -10,6 +10,7 @@ server:
   host: 0.0.0.0
   port: 3000
   log_level: INFO
+  debug: ${oc.env:UNIFI_MCP_DEBUG,false}  # Enable debug mode for FastMCP server
   read_only_mode: ${oc.env:UNIFI_MCP_READ_ONLY_MODE,false}  # Disable all mutating tools (create, update, toggle, etc.)
   http:
     enabled: ${oc.env:UNIFI_MCP_HTTP_ENABLED,false}
