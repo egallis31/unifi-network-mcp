@@ -128,14 +128,16 @@ async def get_port_forward(port_forward_id: str) -> Dict[str, Any]: # Removed co
         if not port_forward_id:
             return {"success": False, "error": "port_forward_id is required"}
 
+        from utils.serialization import serialize_aiounifi_object
+
         rule_obj = await firewall_manager.get_port_forward_by_id(port_forward_id)
-        rule = rule_obj.raw if (rule_obj and hasattr(rule_obj, "raw")) else rule_obj
+        rule = serialize_aiounifi_object(rule_obj) if rule_obj else None
 
         if not rule:
             return {"success": False, "error": f"Port forwarding rule '{port_forward_id}' not found"}
 
-        # Return full details, ensure serializable
-        return {"success": True, "port_forward_id": port_forward_id, "details": json.loads(json.dumps(rule, default=str))}
+        # Return full details, already serialized
+        return {"success": True, "port_forward_id": port_forward_id, "details": rule}
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error getting port forward %s: %s", port_forward_id, e, exc_info=True)
         return {"success": False, "error": str(e)}
@@ -181,8 +183,9 @@ async def toggle_port_forward(port_forward_id: str, confirm: bool = False) -> Di
         if not port_forward_id:
             return {"success": False, "error": "port_forward_id is required"}
 
+        from utils.serialization import serialize_aiounifi_object
         rule_obj = await firewall_manager.get_port_forward_by_id(port_forward_id)
-        rule = rule_obj.raw if (rule_obj and hasattr(rule_obj, "raw")) else rule_obj
+        rule = serialize_aiounifi_object(rule_obj) if rule_obj else None
         if not rule:
             return {"success": False, "error": f"Port forwarding rule '{port_forward_id}' not found"}
 
@@ -302,16 +305,18 @@ async def create_port_forward(
                    validated_data['name'], rule_data['proto'], validated_data['dst_port'],
                    validated_data['fwd_ip'], validated_data['fwd_port'])
 
+        from utils.serialization import serialize_aiounifi_object
+
         result = await firewall_manager.create_port_forward(rule_data)
 
         if result:
             new_rule_id = result if isinstance(result, str) else result.get("_id", "unknown")
-            details = result if isinstance(result, dict) else { "id": new_rule_id }
+            details = serialize_aiounifi_object(result) if isinstance(result, dict) else { "id": new_rule_id }
             logger.info("Successfully created port forward '%s' with ID %s", validated_data['name'], new_rule_id)
             return {"success": True,
                     "message": f"Port forward '{validated_data['name']}' created successfully.",
                     "port_forward_id": new_rule_id,
-                    "details": json.loads(json.dumps(details, default=str))}
+                    "details": details}
         else:
             error_msg = result.get("error", "Manager returned failure") if isinstance(result, dict) else "Manager returned failure"
             logger.error("Failed to create port forward '%s'. Reason: %s", validated_data['name'], error_msg)
@@ -435,30 +440,32 @@ async def update_port_forward(
 
         # Assume firewall_manager.update_port_forward(id, data) exists
         # It should handle merging the update_payload with the existing rule internally or send only the changed fields
+        from utils.serialization import serialize_aiounifi_object
+
         success = await firewall_manager.update_port_forward(port_forward_id, update_payload)
 
         if success:
             # Fetch the rule again to return the updated state
             updated_rule_obj = await firewall_manager.get_port_forward_by_id(port_forward_id)
-            updated_rule = updated_rule_obj.raw if (updated_rule_obj and hasattr(updated_rule_obj, "raw")) else {}
+            updated_rule = serialize_aiounifi_object(updated_rule_obj) if updated_rule_obj else {}
 
             logger.info("Successfully updated port forward '%s' (%s)", rule_name, port_forward_id)
             return {
                 "success": True,
                 "port_forward_id": port_forward_id,
                 "updated_fields": updated_fields_list,
-                "details": json.loads(json.dumps(updated_rule, default=str))
+                "details": updated_rule # Already serialized
             }
         else:
             logger.error("Failed to update port forward '%s' (%s). Manager returned false.", rule_name, port_forward_id)
             # Attempt to fetch rule again to see if partial update occurred? Or just report failure.
             rule_after_update_obj = await firewall_manager.get_port_forward_by_id(port_forward_id)
-            rule_after_update = rule_after_update_obj.raw if (rule_after_update_obj and hasattr(rule_after_update_obj, "raw")) else {}
+            rule_after_update = serialize_aiounifi_object(rule_after_update_obj) if rule_after_update_obj else {}
             return {
                 "success": False,
                 "port_forward_id": port_forward_id,
                 "error": f"Failed to update port forward '{rule_name}'. Check server logs.",
-                "details_after_attempt": json.loads(json.dumps(rule_after_update, default=str)) # Provide state after failed attempt
+                "details_after_attempt": rule_after_update # Already serialized
             }
 
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
@@ -519,8 +526,9 @@ async def create_simple_port_forward(
     if created is None or not isinstance(created, dict):
         return {"success": False, "error": "Controller rejected port forward creation. See logs."}
 
+    from utils.serialization import serialize_aiounifi_object
     return {
         "success": True,
         "port_forward_id": created.get("_id"),
-        "details": json.loads(json.dumps(created, default=str)),
+        "details": serialize_aiounifi_object(created),
     }

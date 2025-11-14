@@ -76,10 +76,8 @@ async def get_client_stats(client_id: str, duration: str = "hourly") -> Dict[str
             return {"success": False, "error": f"Client '{client_id}' not found"}
 
         # Support aiounifi Client objects as well as dicts
-        client_raw = (
-            client_details.raw if hasattr(client_details, "raw")
-            else client_details
-        )
+        from utils.serialization import serialize_aiounifi_object
+        client_raw = serialize_aiounifi_object(client_details)
 
         # Handle both dict and object types
         def safe_get(obj, key, default=None):

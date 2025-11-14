@@ -91,12 +91,13 @@ async def list_networks() -> Dict[str, Any]:
         logger.warning("Permission denied for listing networks.")
         return {"success": False, "error": "Permission denied to list networks."}
     try:
+        from utils.serialization import serialize_list
+
         # Get networks directly from the manager (which now uses V1)
         networks_data = await network_manager.get_networks()
         # Manager returns list of dicts from V1 API or [] on error
-        # Basic reformatting/selection could be done here if needed,
-        # but for now, return the raw V1 structure received from manager.
-        serializable_networks = json.loads(json.dumps(networks_data, default=str))
+        # Safely serialize networks using the serialization utility
+        serializable_networks = serialize_list(networks_data)
         site = getattr(network_manager, '_connection', None)
         site_id = getattr(site, 'site', None) if site else None
         return {
@@ -156,17 +157,19 @@ async def get_network_details(network_id: str) -> Dict[str, Any]:
     try:
         if not network_id:
             return {"success": False, "error": "network_id is required"}
+        from utils.serialization import serialize_aiounifi_object
+
         # Assuming manager get_network_details returns the raw dict or None
         network = await network_manager.get_network_details(network_id)
         if network:
             site = getattr(network_manager, '_connection', None)
             site_id = getattr(site, 'site', None) if site else None
-            # Ensure serializable
+            # Safely serialize network details using the serialization utility
             return {
                 "success": True,
                 "site": site_id,
                 "network_id": network_id,
-                "details": json.loads(json.dumps(network, default=str))
+                "details": serialize_aiounifi_object(network)
             }
         else:
             return {"success": False, "error": f"Network with ID '{network_id}' not found."}
@@ -262,22 +265,24 @@ async def update_network(
             "be fully implemented for partial updates."
         )
         if success:
+            from utils.serialization import serialize_aiounifi_object
             updated_network = await network_manager.get_network_details(network_id)
             logger.info("Successfully updated network (%s)", network_id)
             return {
                 "success": True,
                 "network_id": network_id,
                 "updated_fields": updated_fields_list,
-                "details": json.loads(json.dumps(updated_network, default=str))
+                "details": serialize_aiounifi_object(updated_network)
             }
         else:
+            from utils.serialization import serialize_aiounifi_object
             logger.error("Failed to update network (%s). %s", network_id, error_message_detail)
             network_after_update = await network_manager.get_network_details(network_id)
             return {
                 "success": False,
                 "network_id": network_id,
                 "error": f"Failed to update network ({network_id}). Check server logs. {error_message_detail}",
-                "details_after_attempt": json.loads(json.dumps(network_after_update, default=str))
+                "details_after_attempt": serialize_aiounifi_object(network_after_update)
             }
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error updating network %s: %s", network_id, e, exc_info=True)
@@ -385,6 +390,7 @@ async def create_network(
         network_data.setdefault("enabled", True)
         created_network = await network_manager.create_network(network_data)
         if created_network and isinstance(created_network, dict) and created_network.get('_id'):
+            from utils.serialization import serialize_aiounifi_object
             new_network_id = created_network.get('_id')
             logger.info("Successfully created network '%s' with ID %s", validated_data.get('name'), new_network_id)
             site = getattr(network_manager, '_connection', None)
@@ -394,7 +400,7 @@ async def create_network(
                 "site": site_id,
                 "message": f"Network '{validated_data.get('name')}' created successfully.",
                 "network_id": new_network_id,
-                "details": json.loads(json.dumps(created_network, default=str))
+                "details": serialize_aiounifi_object(created_network)
             }
         else:
             error_msg = created_network.get("error", "Manager returned failure") if isinstance(created_network, dict) else "Manager returned non-dict or failure"
@@ -515,11 +521,13 @@ async def get_wlan_details(wlan_id: str) -> Dict[str, Any]:
     try:
         if not wlan_id:
             return {"success": False, "error": "wlan_id is required"}
+        from utils.serialization import serialize_aiounifi_object
+
         wlan = await network_manager.get_wlan_details(wlan_id)
         if wlan:
             site = getattr(network_manager, '_connection', None)
             site_id = getattr(site, 'site', None) if site else None
-            return {"success": True, "site": site_id, "wlan_id": wlan_id, "details": json.loads(json.dumps(wlan, default=str))}
+            return {"success": True, "site": site_id, "wlan_id": wlan_id, "details": serialize_aiounifi_object(wlan)}
         else:
             return {"success": False, "error": f"WLAN with ID '{wlan_id}' not found."}
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
@@ -604,22 +612,24 @@ async def update_wlan(
         )
 
         if success:
+            from utils.serialization import serialize_aiounifi_object
             updated_wlan = await network_manager.get_wlan_details(wlan_id)
             logger.info("Successfully updated WLAN (%s)", wlan_id)
             return {
                 "success": True,
                 "wlan_id": wlan_id,
                 "updated_fields": updated_fields_list,
-                "details": json.loads(json.dumps(updated_wlan, default=str))
+                "details": serialize_aiounifi_object(updated_wlan)
             }
         else:
+            from utils.serialization import serialize_aiounifi_object
             logger.error("Failed to update WLAN (%s). %s", wlan_id, error_message_detail)
             wlan_after_update = await network_manager.get_wlan_details(wlan_id)
             return {
                 "success": False,
                 "wlan_id": wlan_id,
                 "error": f"Failed to update WLAN ({wlan_id}). Check server logs. {error_message_detail}",
-                "details_after_attempt": json.loads(json.dumps(wlan_after_update, default=str))
+                "details_after_attempt": serialize_aiounifi_object(wlan_after_update)
             }
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error updating WLAN %s: %s", wlan_id, e, exc_info=True)
@@ -696,6 +706,7 @@ async def create_wlan(
         wlan_payload.setdefault("enabled", True)
         created_wlan = await network_manager.create_wlan(wlan_payload)
         if created_wlan and isinstance(created_wlan, dict) and created_wlan.get('_id'):
+            from utils.serialization import serialize_aiounifi_object
             new_wlan_id = created_wlan.get('_id')
             site = getattr(network_manager, '_connection', None)
             site_id = getattr(site, 'site', None) if site else None
@@ -705,7 +716,7 @@ async def create_wlan(
                 "site": site_id,
                 "message": f"WLAN '{validated_data.get('name')}' created successfully.",
                 "wlan_id": new_wlan_id,
-                "details": json.loads(json.dumps(created_wlan, default=str))
+                "details": serialize_aiounifi_object(created_wlan)
             }
         else:
             error_msg = created_wlan.get("error", "Manager returned failure") if isinstance(created_wlan, dict) else "Manager returned non-dict or failure"

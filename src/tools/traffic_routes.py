@@ -329,8 +329,9 @@ async def update_traffic_route(
         success = await firewall_manager.update_traffic_route(route_id, validated_data) # Pass only validated changes
 
         # 3. Fetch again to get the *actual* state after update attempt
+        from utils.serialization import serialize_aiounifi_object
         updated_route_obj = next((r for r in await firewall_manager.get_traffic_routes() if hasattr(r, "raw") and isinstance(r.raw, dict) and r.raw.get("_id") == route_id), None)
-        details_after_attempt = updated_route_obj.raw if updated_route_obj else {}
+        details_after_attempt = serialize_aiounifi_object(updated_route_obj) if updated_route_obj else {}
 
         if success:
             logger.info("Successfully submitted update for traffic route '%s' (%s)", route_name, route_id)
@@ -338,7 +339,7 @@ async def update_traffic_route(
                 "success": True,
                 "route_id": route_id,
                 "updated_fields": updated_fields_list,
-                "details": json.loads(json.dumps(details_after_attempt, default=str)) # Return state AFTER update
+                "details": details_after_attempt # Already serialized
             }
         else:
             logger.error("Manager reported failure updating traffic route '%s' (%s).", route_name, route_id)
@@ -346,7 +347,7 @@ async def update_traffic_route(
                 "success": False,
                 "route_id": route_id,
                 "error": f"Failed to update traffic route '{route_name}'. Check manager logs.",
-                "details_after_attempt": json.loads(json.dumps(details_after_attempt, default=str)) # Still return state
+                "details_after_attempt": details_after_attempt # Already serialized
             }
 
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001

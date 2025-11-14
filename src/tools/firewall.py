@@ -358,17 +358,19 @@ async def create_firewall_policy(
 
     try:
         # Call the new manager method
+        from utils.serialization import serialize_aiounifi_object
+
         created_policy_obj = await firewall_manager.create_firewall_policy(policy_data_to_send)
 
         if created_policy_obj and hasattr(created_policy_obj, 'raw'):
-            created_policy_details = created_policy_obj.raw
+            created_policy_details = serialize_aiounifi_object(created_policy_obj)
             new_policy_id = created_policy_details.get("_id", "unknown")
             logger.info("Successfully created firewall policy '%s' with ID %s", policy_name, new_policy_id)
             return {
                 "success": True,
                 "message": f"Firewall policy '{policy_name}' created successfully.",
                 "policy_id": new_policy_id,
-                "details": json.loads(json.dumps(created_policy_details, default=str)) # Ensure serialization
+                "details": created_policy_details # Already serialized
             }
         else:
             # The manager method should log specific errors, return a generic failure here.
@@ -474,27 +476,29 @@ async def update_firewall_policy(
     updated_fields_list = list(validated_data.keys())
     logger.info("Attempting to update firewall policy '%s' with fields: %s", policy_id, ', '.join(updated_fields_list))
     try:
+        from utils.serialization import serialize_aiounifi_object
+
         success = await firewall_manager.update_firewall_policy(policy_id, validated_data)
 
         if success:
             updated_policy_obj = next((p for p in await firewall_manager.get_firewall_policies(include_predefined=True) if p.id == policy_id), None)
-            updated_details = updated_policy_obj.raw if updated_policy_obj else {}
+            updated_details = serialize_aiounifi_object(updated_policy_obj) if updated_policy_obj else {}
             logger.info("Successfully updated firewall policy (%s)", policy_id)
             return {
                 "success": True,
                 "policy_id": policy_id,
                 "updated_fields": updated_fields_list,
-                "details": json.loads(json.dumps(updated_details, default=str))
+                "details": updated_details # Already serialized
                 }
         else:
             logger.error("Failed to update firewall policy (%s). Manager returned false.", policy_id)
             policy_after_update_obj = next((p for p in await firewall_manager.get_firewall_policies(include_predefined=True) if p.id == policy_id), None)
-            details_after_attempt = policy_after_update_obj.raw if policy_after_update_obj else {}
+            details_after_attempt = serialize_aiounifi_object(policy_after_update_obj) if policy_after_update_obj else {}
             return {
                 "success": False,
                 "policy_id": policy_id,
                 "error": f"Failed to update firewall policy ({policy_id}). Check server logs.",
-                "details_after_attempt": json.loads(json.dumps(details_after_attempt, default=str))
+                "details_after_attempt": details_after_attempt # Already serialized
                 }
 
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
