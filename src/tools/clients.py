@@ -26,17 +26,16 @@ async def list_clients(
 ) -> Dict[str, Any]:
     """Implementation for listing clients."""
     try:
+        from utils.serialization import serialize_list
+
         clients = (
             await client_manager.get_all_clients()
             if include_offline
             else await client_manager.get_clients()
         )
 
-        def _client_to_dict(c):
-            raw = c.raw if hasattr(c, "raw") else c  # c might already be a dict
-            return raw
-
-        clients_raw = [_client_to_dict(c) for c in clients]
+        # Safely serialize clients using the serialization utility
+        clients_raw = serialize_list(clients)
 
         # Helper for safe access to dict or object attributes
         def safe_get_for_filter(obj, key, default=None):
@@ -112,9 +111,12 @@ async def list_clients(
 async def get_client_details(mac_address: str) -> Dict[str, Any]:
     """Implementation for getting client details."""
     try:
+        from utils.serialization import serialize_aiounifi_object
+
         client_obj = await client_manager.get_client_details(mac_address)
         if client_obj:
-            client_raw = client_obj.raw if hasattr(client_obj, "raw") else client_obj
+            # Safely serialize client details using the serialization utility
+            client_raw = serialize_aiounifi_object(client_obj)
             return {
                 "success": True,
                 "site": getattr(
@@ -139,12 +141,14 @@ async def get_client_details(mac_address: str) -> Dict[str, Any]:
 async def list_blocked_clients() -> Dict[str, Any]:
     """Implementation for listing blocked clients."""
     try:
+        from utils.serialization import serialize_list
+
         clients = await client_manager.get_blocked_clients()
+        # Safely serialize clients using the serialization utility
+        clients_serialized = serialize_list(clients)
 
         formatted_clients = []
-        for c in clients:
-            client = c.raw if hasattr(c, "raw") else c
-
+        for client in clients_serialized:
             # Handle both dict and object types
             def safe_get(obj, key, default=None):
                 if isinstance(obj, dict):

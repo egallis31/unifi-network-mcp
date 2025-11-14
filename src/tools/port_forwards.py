@@ -57,9 +57,12 @@ async def list_port_forwards() -> Dict[str, Any]: # Removed context, adjusted re
         logger.warning("Permission denied for listing port forwards.")
         return {"success": False, "error": "Permission denied to list port forwards."}
     try:
+        from utils.serialization import serialize_list
+
         rules = await firewall_manager.get_port_forwards()
-        rules_raw = [r.raw if hasattr(r, "raw") else r for r in rules]
-        
+        # Safely serialize port forward rules using the serialization utility
+        rules_raw = serialize_list(rules)
+
         def safe_get(obj, key, default=None):
             """Safely get a value from either a dict or object."""
             if isinstance(obj, dict):

@@ -447,8 +447,11 @@ async def list_wlans() -> Dict[str, Any]:
         logger.warning("Permission denied for listing WLANs.")
         return {"success": False, "error": "Permission denied to list WLANs."}
     try:
+        from utils.serialization import serialize_list
+
         wlans = await network_manager.get_wlans()
-        wlans_raw = [w.raw if hasattr(w, 'raw') else w for w in wlans]
+        # Safely serialize WLANs using the serialization utility
+        wlans_raw = serialize_list(wlans)
         formatted_wlans = []
         for w in wlans_raw:
             if isinstance(w, dict):

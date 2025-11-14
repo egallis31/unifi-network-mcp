@@ -35,8 +35,11 @@ async def list_devices(
 ) -> Dict[str, Any]:
     """Implementation for listing devices."""
     try:
+        from utils.serialization import serialize_list
+
         devices = await device_manager.get_devices()
-        devices_raw = [d.raw if hasattr(d, "raw") else d for d in devices]
+        # Safely serialize devices using the serialization utility
+        devices_raw = serialize_list(devices)
 
         # Filter by device type
         if device_type != "all":
@@ -96,13 +99,11 @@ async def list_devices(
                 }
                 device_type_prefix = device.get("type", "")[:3]
                 if device_type_prefix == "uap":
-                    from typing import cast
-                    device_dict = device if isinstance(device, dict) else (device.raw if hasattr(device, "raw") else {})
-                    wifi_bands_data = cast(Dict[str, Any], device_dict)
+                    # device is already a dict from serialization
                     details_to_add.update({
                         "radio_table": device.get("radio_table", []),
                         "vap_table": device.get("vap_table", []),
-                        "wifi_bands": get_wifi_bands(wifi_bands_data),
+                        "wifi_bands": get_wifi_bands(device),
                         "experience_score": device.get("satisfaction", 0),
                         "num_clients": device.get("num_sta", 0),
                     })

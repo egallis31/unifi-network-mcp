@@ -64,8 +64,11 @@ async def list_firewall_policies(
         return {"success": False, "error": "Permission denied to list firewall policies."}
 
     try:
+        from utils.serialization import serialize_list
+
         policies = await firewall_manager.get_firewall_policies(include_predefined=include_predefined)
-        policies_raw = [p.raw if hasattr(p, "raw") else p for p in policies]
+        # Safely serialize policies using the serialization utility
+        policies_raw = serialize_list(policies)
 
         def safe_get(obj, key, default=None):
             """Safely get a value from either a dict or object."""
@@ -142,21 +145,25 @@ async def get_firewall_policy_details(
         return {"success": False, "error": "Permission denied to get firewall policy details."}
 
     try:
+        from utils.serialization import serialize_list
+
         if not policy_id:
             return {"success": False, "error": "policy_id is required"}
         policies = await firewall_manager.get_firewall_policies(include_predefined=True)
-        policies_raw = [p.raw if hasattr(p, "raw") else p for p in policies]
-        
+        # Safely serialize policies using the serialization utility
+        policies_raw = serialize_list(policies)
+
         def safe_get(obj, key, default=None):
             """Safely get a value from either a dict or object."""
             if isinstance(obj, dict):
                 return obj.get(key, default)
             return getattr(obj, key, default)
-        
+
         policy = next((p for p in policies_raw if safe_get(p, "_id") == policy_id), None)
         if not policy:
             return {"success": False, "error": f"Firewall policy with ID '{policy_id}' not found."}
-        return {"success": True, "policy_id": policy_id, "details": json.loads(json.dumps(policy, default=str))}
+        # policy is already serialized, no need for json.loads/dumps
+        return {"success": True, "policy_id": policy_id, "details": policy}
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
         logger.error("Error getting firewall policy details for %s: %s", policy_id, e, exc_info=True)
         return {"success": False, "error": str(e)}

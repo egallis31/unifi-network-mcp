@@ -194,6 +194,8 @@ async def get_top_clients(duration: str = "daily", limit: int = 10) -> Dict[str,
     try:
         top_client_stats = await stats_manager.get_top_clients(limit=limit)
 
+        from utils.serialization import serialize_aiounifi_object
+
         enhanced_clients = []
         for entry in top_client_stats:
             mac = entry.get("mac")
@@ -201,7 +203,8 @@ async def get_top_clients(duration: str = "daily", limit: int = 10) -> Dict[str,
             if mac:
                 details = await client_manager.get_client_details(mac)
                 if details:
-                    raw = details.raw if hasattr(details, "raw") else details
+                    # Safely serialize client details using the serialization utility
+                    raw = serialize_aiounifi_object(details)
                     # Handle both dict and object types
                     def safe_get(obj, key, default=None):
                         if isinstance(obj, dict):

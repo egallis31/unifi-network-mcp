@@ -78,8 +78,11 @@ async def list_qos_rules() -> Dict[str, Any]:
         logger.warning("Permission denied for listing QoS rules.")
         return {"success": False, "error": "Permission denied to list QoS rules."}
     try:
+        from utils.serialization import serialize_list
+
         qos_rules = await qos_manager.get_qos_rules()
-        rules_raw = [getattr(r, "raw", r) for r in qos_rules]
+        # Safely serialize QoS rules using the serialization utility
+        rules_raw = serialize_list(qos_rules)
         formatted_rules = [
             {
              "id": r.get("_id"),
@@ -136,14 +139,16 @@ async def get_qos_rule_details(rule_id: str) -> Dict[str, Any]:
         logger.warning("Permission denied for getting QoS rule details (%s).", rule_id)
         return {"success": False, "error": "Permission denied to get QoS rule details."}
     try:
+        from utils.serialization import serialize_aiounifi_object
+
         if not rule_id:
             return {"success": False, "error": "rule_id is required"}
         # Assuming manager returns the raw dict or None
         rule = await qos_manager.get_qos_rule_details(rule_id)
         if rule:
-            # Return details - ensure serializable (using json.loads/dumps for safety)
+            # Safely serialize rule details using the serialization utility
             site = _get_site()
-            return {"success": True, "site": site, "rule_id": rule_id, "details": json.loads(json.dumps(rule, default=str))}
+            return {"success": True, "site": site, "rule_id": rule_id, "details": serialize_aiounifi_object(rule)}
         else:
             return {"success": False, "error": f"QoS rule with ID '{rule_id}' not found."}
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
@@ -302,22 +307,24 @@ async def update_qos_rule(
         )
 
         if success:
+            from utils.serialization import serialize_aiounifi_object
             updated_rule = await qos_manager.get_qos_rule_details(rule_id)
             logger.info("Successfully updated QoS rule (%s)", rule_id)
             return {
                 "success": True,
                 "rule_id": rule_id,
                 "updated_fields": updated_fields_list,
-                "details": json.loads(json.dumps(updated_rule, default=str))
+                "details": serialize_aiounifi_object(updated_rule)
             }
         else:
+            from utils.serialization import serialize_aiounifi_object
             logger.error("Failed to update QoS rule (%s). %s", rule_id, error_message_detail)
             rule_after_update = await qos_manager.get_qos_rule_details(rule_id)
             return {
                 "success": False,
                 "rule_id": rule_id,
                 "error": f"Failed to update QoS rule ({rule_id}). Check server logs. {error_message_detail}",
-                "details_after_attempt": json.loads(json.dumps(rule_after_update, default=str))
+                "details_after_attempt": serialize_aiounifi_object(rule_after_update)
             }
 
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
@@ -390,6 +397,7 @@ async def create_qos_rule(
         created_rule = await qos_manager.create_qos_rule(validated_data)
 
         if created_rule and created_rule.get('_id'):
+            from utils.serialization import serialize_aiounifi_object
             new_rule_id = created_rule.get('_id')
             logger.info("Successfully created QoS rule '%s' with ID %s", rule_name, new_rule_id)
             site = _get_site()
@@ -398,7 +406,7 @@ async def create_qos_rule(
                 "site": site,
                 "message": f"QoS rule '{rule_name}' created successfully.",
                 "rule_id": new_rule_id,
-                "details": json.loads(json.dumps(created_rule, default=str))
+                "details": serialize_aiounifi_object(created_rule)
             }
         else:
             error_msg = created_rule.get("error", "Manager returned failure") if isinstance(created_rule, dict) else "Manager returned non-dict or failure"
@@ -482,8 +490,9 @@ async def create_simple_qos_rule(
     if created is None or not isinstance(created, dict):
         return {"success": False, "error": "Controller rejected QoS rule creation. See logs."}
 
+    from utils.serialization import serialize_aiounifi_object
     return {
         "success": True,
         "rule_id": created.get("_id"),
-        "details": json.loads(json.dumps(created, default=str)),
+        "details": serialize_aiounifi_object(created),
     }
