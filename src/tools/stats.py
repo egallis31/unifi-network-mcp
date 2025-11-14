@@ -234,17 +234,13 @@ async def get_top_clients(duration: str = "daily", limit: int = 10) -> Dict[str,
 async def get_dpi_stats() -> Dict[str, Any]:
     """Implementation for getting DPI stats."""
     try:
+        from utils.serialization import serialize_list
+
         dpi_stats_result = await stats_manager.get_dpi_stats()
 
-        def serialize_dpi(item):
-            return item.raw if hasattr(item, 'raw') else item
-
-        serialized_apps = [
-            serialize_dpi(app) for app in dpi_stats_result.get("applications", [])
-        ]
-        serialized_cats = [
-            serialize_dpi(cat) for cat in dpi_stats_result.get("categories", [])
-        ]
+        # Safely serialize DPI statistics using the serialization utility
+        serialized_apps = serialize_list(dpi_stats_result.get("applications", []))
+        serialized_cats = serialize_list(dpi_stats_result.get("categories", []))
 
         return {
             "success": True,
@@ -267,17 +263,16 @@ async def get_dpi_stats() -> Dict[str, Any]:
 async def get_alerts(limit: int = 10, include_archived: bool = False) -> Dict[str, Any]:
     """Implementation for getting alerts."""
     try:
+        from utils.serialization import serialize_list
+
         alerts = await stats_manager.get_alerts(include_archived=include_archived)
         # Apply limit manually since the manager doesn't support it
         if limit and len(alerts) > limit:
             alerts = alerts[:limit]
-        
-        # Serialize Event objects to dicts using their .raw attribute
-        serialized_alerts = [
-            event.raw if hasattr(event, 'raw') else event
-            for event in alerts
-        ]
-        
+
+        # Safely serialize Event objects using the serialization utility
+        serialized_alerts = serialize_list(alerts)
+
         return {
             "success": True,
             "site": getattr(

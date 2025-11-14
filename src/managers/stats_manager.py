@@ -292,40 +292,30 @@ class StatsManager:
             return []
 
         try:
-            # Note: aiounifi doesn't have a dedicated alerts endpoint
-            # Alerts are events with specific keys. We need to make an API call
-            # to get events and filter for alert-type events
+            # Use /stat/alarm endpoint for actual alerts/alarms
+            # This is different from /stat/event which returns ALL events
             from aiounifi.models.api import ApiRequest
 
-            # Get recent events which may include alert-type events
-            end_time = int(datetime.now().timestamp() * 1000)
-            start_time = end_time - (24 * 60 * 60 * 1000)  # Last 24 hours
+            # Query the alarms endpoint, optionally filtering archived alarms
+            alarm_path = "/stat/alarm"
+            if not include_archived:
+                alarm_path += "?archived=false"
 
             api_request = ApiRequest(
                 method="get",
-                path=f"/stat/event?start={start_time}&end={end_time}"
+                path=alarm_path
             )
             response = await self._connection.request(api_request)
-            events_data = response if isinstance(response, list) else []
+            alarms_data = response if isinstance(response, list) else []
 
-            # Convert to Event objects and filter for alert-like events
+            # Convert to Event objects
             alerts = []
-            alert_keywords = [
-                "Alert", "Warning", "Error", "Failed", "Disconnected",
-                "Lost_Contact", "Overheat", "Overload"
-            ]
-
-            for event_data in events_data:
+            for alarm_data in alarms_data:
                 try:
-                    event = Event(event_data)
-                    # Check if this looks like an alert/warning event
-                    event_key = event_data.get("key", "")
-                    if any(keyword in event_key for keyword in alert_keywords):
-                        if (include_archived or
-                                not event_data.get("archived", False)):
-                            alerts.append(event)
+                    event = Event(alarm_data)
+                    alerts.append(event)
                 except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as event_error:
-                    logger.debug("Skipping invalid event data: %s", event_error)
+                    logger.debug("Skipping invalid alarm data: %s", event_error)
                     continue
 
             self._connection.update_cache(cache_key, alerts, timeout=60)

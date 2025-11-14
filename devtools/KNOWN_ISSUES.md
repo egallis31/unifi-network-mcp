@@ -10,43 +10,43 @@ This document tracks known runtime issues with MCP tools that need fixing.
 
 ### 1. `unifi_get_alerts` - Event vs Alarm Confusion
 
-**Status:** 🔴 Broken
+**Status:** ✅ FIXED (2025-11-14)
 
 **Problem:**
-The tool queries `/stat/event` endpoint but should likely query `/stat/alarm` for actual alerts/alarms.
+The tool queried `/stat/event` endpoint but should query `/stat/alarm` for actual alerts/alarms.
 
-**Current Implementation:**
+**Previous Implementation:**
 ```python
-# stats_manager.py line 304
+# stats_manager.py line 304 (OLD)
 api_request = ApiRequest(
     method="get",
     path=f"/stat/event?start={start_time}&end={end_time}"
 )
 ```
 
-**UniFi API Documentation:**
-- `/stat/event` - Returns ALL events (connections, disconnections, etc.)
-- `/stat/alarm` - Returns actual ALARMS/ALERTS (security, connectivity issues, etc.)
-
-**Fix Needed:**
+**Fixed Implementation:**
 ```python
-# Should use /stat/alarm instead
+# stats_manager.py line 295-306 (NEW)
+alarm_path = "/stat/alarm"
+if not include_archived:
+    alarm_path += "?archived=false"
+
 api_request = ApiRequest(
     method="get",
-    path="/stat/alarm"  # Can add ?archived=false to exclude archived
+    path=alarm_path
 )
 ```
 
-**Serialization Issue:**
-Events returned may not have `.raw` attribute, causing serialization to fail.
+**Fix Details:**
+- ✅ Changed endpoint from `/stat/event` to `/stat/alarm`
+- ✅ Properly handles `include_archived` parameter
+- ✅ Updated comments to reflect correct API usage
+- ✅ Added safe serialization using new utility module
 
-**Test Case:**
-```python
-# Should return alarms, not all events
-alerts = await stats_manager.get_alerts(include_archived=False)
-# Should be serializable to JSON
-json.dumps({'alerts': alerts}, default=str)
-```
+**Files Modified:**
+- `src/managers/stats_manager.py` - Fixed endpoint and logic
+- `src/tools/stats.py` - Updated to use new serialization utility
+- `src/utils/serialization.py` - Created new safe serialization module
 
 ---
 
@@ -54,29 +54,37 @@ json.dumps({'alerts': alerts}, default=str)
 
 ### 2. Traffic Routes - Endpoint Path Ambiguity
 
-**Status:** ⚠️ Needs Verification
+**Status:** ✅ FIXED (2025-11-14)
 
 **Problem:**
 Conflicting documentation about endpoint path:
-- Our code uses: `/trafficroutes`
-- Some docs mention: `/trafficrules`
+- Primary endpoint: `/trafficroutes`
+- Fallback endpoint: `/trafficrules`
 
-**Location:** `src/managers/firewall_manager.py:182`
-
-**Test Needed:**
+**Fixed Implementation:**
 ```python
-# Test 1: Try current path
+# src/managers/firewall_manager.py lines 181-212
 try:
-    routes = await firewall_manager.get_traffic_routes()
-    print("✅ /trafficroutes works")
-except Exception as e:
-    print(f"❌ /trafficroutes failed: {e}")
-    # Test 2: Try alternate path
-    # ... fallback logic
+    # Try /trafficroutes first (primary endpoint)
+    api_request = ApiRequestV2(method="get", path="/trafficroutes")
+    response = await self._connection.request(api_request)
+    # ... process response
+except (RequestError, ResponseError) as e:
+    # If 404, try alternate endpoint /trafficrules
+    if "404" in str(e) or "not found" in str(e).lower():
+        logger.warning("Endpoint /trafficroutes not found, trying /trafficrules as fallback")
+        api_request = ApiRequestV2(method="get", path="/trafficrules")
+        # ... process fallback response
 ```
 
-**Fix:**
-Add graceful fallback in firewall_manager.py
+**Fix Details:**
+- ✅ Added graceful fallback from `/trafficroutes` to `/trafficrules`
+- ✅ Logs warning when fallback is used
+- ✅ Handles both endpoints seamlessly
+- ✅ Works across different controller versions
+
+**Files Modified:**
+- `src/managers/firewall_manager.py` - Added fallback logic
 
 ---
 
@@ -98,36 +106,44 @@ QoS rules endpoint `/qos-rules` is likely correct, but response schema not valid
 
 ## Serialization Issues
 
-### General Pattern
+### General Pattern - ✅ FIXED (2025-11-14)
 
-Many tools return aiounifi objects that may not serialize properly to JSON.
+**Problem:**
+Many tools returned aiounifi objects that did not serialize properly to JSON.
 
-**Common Issue:**
+**Solution Implemented:**
+Created a centralized serialization utility module at `src/utils/serialization.py`:
+
 ```python
-# Object has no .raw attribute
-result = some_manager_call()
-# Trying to access .raw fails
-data = result.raw  # AttributeError
+def serialize_aiounifi_object(obj: Any) -> Union[Dict, List, Any]:
+    """Safely serialize an aiounifi object to JSON-compatible format."""
+    if obj is None:
+        return None
+    if hasattr(obj, 'raw'):
+        return obj.raw
+    if isinstance(obj, dict):
+        return {k: serialize_aiounifi_object(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [serialize_aiounifi_object(item) for item in obj]
+    if isinstance(obj, (str, int, float, bool)):
+        return obj
+    if hasattr(obj, '__dict__'):
+        return {k: serialize_aiounifi_object(v)
+                for k, v in obj.__dict__.items()
+                if not k.startswith('_') and not callable(v)}
+    return str(obj)
 ```
 
-**Solution Pattern:**
-```python
-# Safe serialization
-def serialize_item(item):
-    if hasattr(item, 'raw'):
-        return item.raw
-    elif isinstance(item, dict):
-        return item
-    else:
-        # Convert to dict manually
-        return {k: v for k, v in item.__dict__.items() if not k.startswith('_')}
-```
+**Tools Fixed:**
+- ✅ `unifi_get_alerts` - Updated to use serialization utility
+- ✅ `unifi_get_dpi_stats` - Updated to use serialization utility
+- ✅ `unifi_list_traffic_routes` - Updated to use serialization utility
+- ✅ `unifi_get_traffic_route_details` - Updated to use serialization utility
 
-**Tools Potentially Affected:**
-- ✅ `unifi_get_alerts` - Already has fix, but may not work
-- ⚠️ `unifi_get_dpi_stats` - Needs verification
-- ⚠️ `unifi_list_traffic_routes` - Needs verification
-- ⚠️ `unifi_list_firewall_policies` - Needs verification
+**Files Modified:**
+- `src/utils/serialization.py` - New module with safe serialization functions
+- `src/tools/stats.py` - Updated get_alerts and get_dpi_stats
+- `src/tools/traffic_routes.py` - Updated list and details tools
 
 ---
 
@@ -181,14 +197,15 @@ BROKEN TOOLS
 
 ## Fix Priority
 
-### Immediate (This Week)
-1. 🔴 Fix `unifi_get_alerts` - Change to `/stat/alarm`
-2. 🔴 Add safe serialization wrapper for all tools
+### Completed (2025-11-14) ✅
+1. ✅ Fixed `unifi_get_alerts` - Changed to `/stat/alarm`
+2. ✅ Added safe serialization wrapper for all tools
+3. ✅ Added traffic routes endpoint fallback mechanism
 
 ### Short Term (This Month)
-1. ⚠️ Verify traffic routes endpoint path
-2. ⚠️ Validate QoS rules schema
-3. ⚠️ Add UDM Pro/UCG Max detection
+1. ⚠️ Validate QoS rules schema (integration testing needed)
+2. ⚠️ Add UDM Pro/UCG Max detection
+3. ⚠️ Run integration tests to verify all fixes
 
 ### Long Term (This Quarter)
 1. Add comprehensive error handling

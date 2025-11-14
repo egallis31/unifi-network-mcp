@@ -73,22 +73,22 @@ async def list_traffic_routes() -> Dict[str, Any]:
         logger.warning("Permission denied for listing traffic routes.")
         return {"success": False, "error": "Permission denied to list traffic routes."}
     try:
-        routes = await firewall_manager.get_traffic_routes()
-        # Directly return the raw V2 data structure from the manager
-        routes_raw = [r.raw if hasattr(r, "raw") and isinstance(r.raw, dict) else {} for r in routes]
-        # Basic filtering to ensure only dicts are passed, log if not
-        valid_routes_raw = []
-        for idx, r_raw in enumerate(routes_raw):
-            if isinstance(r_raw, dict) and r_raw.get("_id"):
-                valid_routes_raw.append(r_raw)
-            else:
-                logger.warning("Skipping invalid/incomplete route data at index %s: %s", idx, r_raw)
+        from utils.serialization import serialize_list
 
-        # Ensure serializability for JSON response
-        serializable_routes = json.loads(json.dumps(valid_routes_raw, default=str))
+        routes = await firewall_manager.get_traffic_routes()
+        # Safely serialize traffic routes using the serialization utility
+        serializable_routes = serialize_list(routes)
+
+        # Filter out invalid routes (those without _id)
+        valid_routes = []
+        for idx, route in enumerate(serializable_routes):
+            if isinstance(route, dict) and route.get("_id"):
+                valid_routes.append(route)
+            else:
+                logger.warning("Skipping invalid/incomplete route data at index %s: %s", idx, route)
 
         site = getattr(getattr(firewall_manager, "connection", None), "site", None) or getattr(getattr(firewall_manager, "_connection", None), "site", None)
-        return {"success": True, "site": site, "count": len(serializable_routes), "traffic_routes": serializable_routes}
+        return {"success": True, "site": site, "count": len(valid_routes), "traffic_routes": valid_routes}
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001
         logger.error("Error listing traffic routes: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}
@@ -145,17 +145,23 @@ async def get_traffic_route_details(route_id: str) -> Dict[str, Any]:
         logger.warning("Permission denied for getting traffic route details (%s).", route_id)
         return {"success": False, "error": "Permission denied to get traffic route details."}
     try:
+        from utils.serialization import serialize_aiounifi_object
+
         if not route_id:
             return {"success": False, "error": "route_id is required"}
         routes = await firewall_manager.get_traffic_routes()
-        # Find the specific route based on its raw data
+        # Find the specific route
         route_obj = next((r for r in routes if hasattr(r, "raw") and isinstance(r.raw, dict) and r.raw.get("_id") == route_id), None)
 
-        if not route_obj or not route_obj.raw:
-            return {"success": False, "error": f"Traffic route '{route_id}' not found or has invalid data."}
+        if not route_obj:
+            return {"success": False, "error": f"Traffic route '{route_id}' not found."}
 
-        # Return raw details - ensure serializable
-        return {"success": True, "route_id": route_id, "details": json.loads(json.dumps(route_obj.raw, default=str))}
+        # Safely serialize route details using the serialization utility
+        details = serialize_aiounifi_object(route_obj)
+        if not isinstance(details, dict) or not details.get("_id"):
+            return {"success": False, "error": f"Traffic route '{route_id}' has invalid data."}
+
+        return {"success": True, "route_id": route_id, "details": details}
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001
         logger.error("Error getting traffic route details for %s: %s", route_id, e, exc_info=True)
         return {"success": False, "error": str(e)}

@@ -179,22 +179,35 @@ class FirewallManager:
             return []
 
         try:
+            # Try /trafficroutes first (primary endpoint)
             api_request = ApiRequestV2(method="get", path="/trafficroutes")
-
             response = await self._connection.request(api_request)
 
             routes_data = response if isinstance(response, list) else response.get('data', []) if isinstance(response, dict) else []
-
             routes: List[TrafficRoute] = [TrafficRoute(r) for r in routes_data]
 
-            result = routes
-
-            self._connection.update_cache(cache_key, result)
-            return result
+            self._connection.update_cache(cache_key, routes)
+            return routes
         except (RequestError, ResponseError) as e:
-            logger.error("Error getting traffic routes: %s", e)
-            return []
-        except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
+            # If 404, try alternate endpoint /trafficrules
+            if "404" in str(e) or "not found" in str(e).lower():
+                logger.warning("Endpoint /trafficroutes not found, trying /trafficrules as fallback")
+                try:
+                    api_request = ApiRequestV2(method="get", path="/trafficrules")
+                    response = await self._connection.request(api_request)
+
+                    routes_data = response if isinstance(response, list) else response.get('data', []) if isinstance(response, dict) else []
+                    routes: List[TrafficRoute] = [TrafficRoute(r) for r in routes_data]
+
+                    self._connection.update_cache(cache_key, routes)
+                    return routes
+                except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as fallback_error:
+                    logger.error("Error with fallback endpoint /trafficrules: %s", fallback_error)
+                    return []
+            else:
+                logger.error("Error getting traffic routes: %s", e)
+                return []
+        except (ConnectionError, ValueError, TypeError) as e:
             logger.error("Unexpected error getting traffic routes: %s", e)
             return []
 
