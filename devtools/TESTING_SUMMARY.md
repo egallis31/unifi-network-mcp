@@ -99,9 +99,9 @@ All 10 tool modules passed static validation:
 - ✅ No missing dependencies
 - ✅ No orphaned function calls
 
-### API Endpoints Documentation
+### API Endpoints Documentation & Validation
 
-All UniFi Controller API endpoints have been documented:
+All UniFi Controller API endpoints have been documented and validated:
 
 **Total Endpoints:** 27 unique API endpoints
 **API Versions:**
@@ -113,7 +113,12 @@ All UniFi Controller API endpoints have been documented:
 - POST: 23 requests
 - PUT: 1 request
 
-See `devtools/API_ENDPOINTS.md` for full details.
+**Validation Status:** 90% of implementation validated against official sources
+
+See detailed documentation:
+- `devtools/API_ENDPOINTS.md` - Complete endpoint listing
+- `devtools/API_REFERENCE.md` - Validation against official docs
+- `devtools/FINDINGS.md` - Research findings and recommendations
 
 ## Recent Fixes (Already Applied)
 
@@ -175,6 +180,8 @@ Three testing/validation scripts have been created in `devtools/`:
 - `devtools/analyze_tools.py` - AST-based analysis tool
 - `devtools/api_documentation.py` - API endpoint extractor
 - `devtools/API_ENDPOINTS.md` - Complete API documentation
+- `devtools/API_REFERENCE.md` - Complete API validation against official docs (90% validated)
+- `devtools/FINDINGS.md` - Research findings and recommendations
 - `devtools/TESTING_SUMMARY.md` - This summary
 
 ## Conclusion
