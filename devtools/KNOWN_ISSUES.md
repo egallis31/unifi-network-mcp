@@ -139,11 +139,27 @@ def serialize_aiounifi_object(obj: Any) -> Union[Dict, List, Any]:
 - ✅ `unifi_get_dpi_stats` - Updated to use serialization utility
 - ✅ `unifi_list_traffic_routes` - Updated to use serialization utility
 - ✅ `unifi_get_traffic_route_details` - Updated to use serialization utility
+- ✅ ALL tools - Comprehensive cleanup of inefficient patterns (2025-11-14)
+
+**Comprehensive Cleanup Completed (2025-11-14):**
+- ✅ Eliminated 15+ `json.loads(json.dumps())` patterns across all tools
+- ✅ Replaced all `.raw if hasattr()` patterns with centralized serialization
+- ✅ Simplified manual serialization loops in managers
+- ✅ Verified all tools compile without syntax errors
+- ✅ Tools affected: clients.py, devices.py, network.py, firewall.py, port_forwards.py, qos.py, stats.py, traffic_routes.py
+- ✅ Managers updated: stats_manager.py (simplified 25-line loop to 1-line call)
 
 **Files Modified:**
 - `src/utils/serialization.py` - New module with safe serialization functions
-- `src/tools/stats.py` - Updated get_alerts and get_dpi_stats
-- `src/tools/traffic_routes.py` - Updated list and details tools
+- `src/tools/stats.py` - Updated get_alerts, get_dpi_stats, and client stats
+- `src/tools/traffic_routes.py` - Updated list, details, and update operations
+- `src/tools/clients.py` - Updated all client listing and details tools
+- `src/tools/devices.py` - Updated device listing
+- `src/tools/network.py` - Updated all network and WLAN tools
+- `src/tools/firewall.py` - Updated firewall policy tools
+- `src/tools/port_forwards.py` - Updated all port forwarding tools
+- `src/tools/qos.py` - Updated all QoS tools
+- `src/managers/stats_manager.py` - Simplified manual serialization in get_top_clients
 
 ---
 
