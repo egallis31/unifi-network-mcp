@@ -171,30 +171,13 @@ class StatsManager:
         endpoints return no data. Values are cumulative since association and
         are sufficient for ranking purposes.
         """
+        from utils.serialization import serialize_list
+
         online_clients = await self._client_manager.get_clients()
         if not online_clients:
             return []
 
-        clients_raw = []
-        for c in online_clients:
-            if hasattr(c, "raw"):
-                clients_raw.append(c.raw)
-            elif isinstance(c, dict):
-                clients_raw.append(c)
-            else:
-                # Try to convert Client object to dict-like access
-                client_dict = {}
-                for attr in ["mac", "name", "hostname", "rx_bytes", "tx_bytes",
-                            "bytes", "wired_rx_bytes", "wired-rx_bytes",
-                            "wired_tx_bytes", "wired-tx_bytes"]:
-                    try:
-                        val = getattr(c, attr, None)
-                        if val is not None:
-                            client_dict[attr] = val
-                    except (AttributeError, TypeError):
-                        pass
-                if client_dict:
-                    clients_raw.append(client_dict)
+        clients_raw = serialize_list(online_clients)
 
         aggregated_stats: List[Dict[str, Any]] = []
         def _safe_int(value: Any) -> int:
