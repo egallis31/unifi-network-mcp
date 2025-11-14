@@ -77,7 +77,7 @@ class StatsManager:
                 "attrs": [
                     "time",
                     "wan-tx_bytes",
-                    "wan-rx_bytes", 
+                    "wan-rx_bytes",
                     "wan2-tx_bytes",
                     "wan2-rx_bytes",
                     "num_sta",
@@ -88,6 +88,21 @@ class StatsManager:
             api_request = ApiRequest(method="post", path=endpoint, data=payload)
             response = await self._connection.request(api_request)
             result = response if isinstance(response, list) else []
+
+            # Enhanced logging to debug empty responses
+            logger.info(
+                "Network stats endpoint: %s, duration: %dh, response count: %d",
+                endpoint, duration_hours, len(result)
+            )
+            if result:
+                logger.debug("Sample data point: %s", result[0])
+            else:
+                logger.warning(
+                    "Network stats returned empty data for %dh duration. "
+                    "Controller may not have aggregated data yet.",
+                    duration_hours
+                )
+
             self._connection.update_cache(cache_key, result, timeout=300)
             return result
         except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:

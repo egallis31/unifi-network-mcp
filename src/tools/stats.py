@@ -8,7 +8,7 @@ import logging
 from typing import Dict, Any
 from aiounifi.errors import RequestError, ResponseError
 
-from src.runtime import server, stats_manager, client_manager, device_manager
+from src.runtime import server, stats_manager, client_manager, device_manager, system_manager
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ async def get_network_stats(duration: str = "hourly") -> Dict[str, Any]:
             int(e.get("wan-tx_bytes", 0) or 0) + int(e.get("wan2-tx_bytes", 0) or 0)
             for e in stats
         )
-        
+
         summary = {
             "total_rx_bytes": total_rx,
             "total_tx_bytes": total_tx,
@@ -52,7 +52,37 @@ async def get_network_stats(duration: str = "hourly") -> Dict[str, Any]:
                 ) / max(1, len(stats))
             ) if stats else 0,
         }
-        return {
+
+        # If stats are empty, try to get health data as a fallback
+        warning_message = None
+        if not stats or (total_rx == 0 and total_tx == 0):
+            logger.info("Network stats empty or zero, fetching health data as fallback")
+            try:
+                health = await system_manager.get_network_health()
+                if health:
+                    warning_message = (
+                        "Historical network stats returned empty/zero data. "
+                        "Showing current health snapshot instead. This may indicate "
+                        "the controller hasn't aggregated data yet or stats collection "
+                        "is disabled."
+                    )
+                    # Health data has a different structure - extract what we can
+                    health_items = health.get("items", []) if isinstance(health, dict) else health
+                    return {
+                        "success": True,
+                        "site": getattr(
+                            getattr(stats_manager, "_connection", None), "site", "unknown"
+                        ),
+                        "duration": duration,
+                        "warning": warning_message,
+                        "summary": summary,  # Keep the zero summary
+                        "health_fallback": health_items,  # Include health data
+                        "stats": stats
+                    }
+            except Exception as health_error:
+                logger.debug("Failed to fetch health fallback: %s", health_error)
+
+        result = {
             "success": True,
             "site": getattr(
                 getattr(stats_manager, "_connection", None), "site", "unknown"
@@ -61,6 +91,9 @@ async def get_network_stats(duration: str = "hourly") -> Dict[str, Any]:
             "summary": summary,
             "stats": stats
         }
+        if warning_message:
+            result["warning"] = warning_message
+        return result
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
         logger.error("Error getting network stats: %s", e, exc_info=True)
         return {"success": False, "error": str(e)}
