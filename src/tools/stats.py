@@ -29,19 +29,23 @@ async def get_network_stats(duration: str = "hourly") -> Dict[str, Any]:
                     return v
             return 0
 
+        # Aggregate WAN bytes from network stats
+        total_rx = sum(
+            int(e.get("wan-rx_bytes", 0) or 0) + int(e.get("wan2-rx_bytes", 0) or 0)
+            for e in stats
+        )
+        total_tx = sum(
+            int(e.get("wan-tx_bytes", 0) or 0) + int(e.get("wan2-tx_bytes", 0) or 0)
+            for e in stats
+        )
+        
         summary = {
-            "total_rx_bytes": sum(int(e.get("rx_bytes", 0) or 0) for e in stats),
-            "total_tx_bytes": sum(int(e.get("tx_bytes", 0) or 0) for e in stats),
-            "total_bytes": sum(
-                int(e.get("bytes") or 0) if e.get("bytes") is not None
-                else int(e.get("rx_bytes", 0) or 0) + int(e.get("tx_bytes", 0) or 0)
-                for e in stats
-            ),
+            "total_rx_bytes": total_rx,
+            "total_tx_bytes": total_tx,
+            "total_bytes": total_rx + total_tx,
             "avg_clients": int(
                 sum(
                     _first_non_none(
-                        e.get("num_user"),
-                        e.get("num_active_user"),
                         e.get("num_sta")
                     )
                     for e in stats
@@ -147,11 +151,12 @@ async def get_device_stats(device_id: str, duration: str = "hourly") -> Dict[str
             safe_get_device(device_details, "name")
             or safe_get_device(device_details, "model", "Unknown")
         )
-        actual_device_id = safe_get_device(device_details, "_id", device_id)
+        device_mac = safe_get_device(device_details, "mac", device_id)
         device_type = safe_get_device(device_details, "type", "unknown")
 
+        # Use MAC address for stats API call
         stats = await stats_manager.get_device_stats(
-            actual_device_id, duration_hours=duration_hours
+            device_mac, duration_hours=duration_hours
         )
         summary = {
             "total_rx_bytes": sum(e.get("rx_bytes", 0) for e in stats),

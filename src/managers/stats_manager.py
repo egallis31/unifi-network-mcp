@@ -64,16 +64,23 @@ class StatsManager:
             )
             end_time = int(datetime.now().timestamp() * 1000)
 
-            endpoint = "/stat/report/hourly.site"
-            # Use non-rate attributes commonly available on report endpoints
+            # Use the appropriate endpoint based on duration
+            if duration_hours <= 5:
+                endpoint = "/stat/report/5minutes.site"
+            elif duration_hours <= 24:
+                endpoint = "/stat/report/hourly.site"
+            else:
+                endpoint = "/stat/report/daily.site"
+            
+            # Request byte transfer attributes
             payload = {
                 "attrs": [
-                    "bytes",              # total bytes (if provided by controller)
-                    "rx_bytes",           # some controllers provide rx/tx at site level
-                    "tx_bytes",
-                    "num_user",
+                    "time",
+                    "wan-tx_bytes",
+                    "wan-rx_bytes", 
+                    "wan2-tx_bytes",
+                    "wan2-rx_bytes",
                     "num_sta",
-                    "num_active_user",
                 ],
                 "start": start_time,
                 "end": end_time,
@@ -108,9 +115,16 @@ class StatsManager:
             )
             end_time = int(datetime.now().timestamp() * 1000)
 
-            endpoint = "/stat/report/hourly.sta"
+            # Use the appropriate endpoint based on duration
+            if duration_hours <= 5:
+                endpoint = "/stat/report/5minutes.user"
+            elif duration_hours <= 24:
+                endpoint = "/stat/report/hourly.user"
+            else:
+                endpoint = "/stat/report/daily.user"
+            
             payload = {
-                "attrs": ["rx_bytes", "tx_bytes", "bytes"],
+                "attrs": ["time", "rx_bytes", "tx_bytes"],
                 "mac": client_mac,
                 "start": start_time,
                 "end": end_time,
@@ -145,10 +159,16 @@ class StatsManager:
             )
             end_time = int(datetime.now().timestamp() * 1000)
 
-            endpoint = "/stat/report/hourly.dev"
+            # Use the appropriate endpoint based on duration
+            if duration_hours <= 5:
+                endpoint = "/stat/report/5minutes.ap"
+            elif duration_hours <= 24:
+                endpoint = "/stat/report/hourly.ap"
+            else:
+                endpoint = "/stat/report/daily.ap"
+            
             payload = {
-                "attrs": ["rx_bytes", "tx_bytes", "bytes", "num_sta"],
-                # num_sta relevant for APs
+                "attrs": ["time", "bytes", "num_sta", "user-num_sta"],
                 "mac": device_mac,
                 "start": start_time,
                 "end": end_time,

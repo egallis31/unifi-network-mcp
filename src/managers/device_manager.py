@@ -42,15 +42,29 @@ class DeviceManager:
             logger.error("Error getting devices: %s", e)
             return []
 
-    async def get_device_details(self, device_mac: str) -> Optional[Device]:
-        """Get detailed information for a specific device by MAC address."""
+    async def get_device_details(self, device_identifier: str) -> Optional[Device]:
+        """Get detailed information for a specific device by MAC address or _id.
+        
+        Args:
+            device_identifier: Either MAC address or _id of the device
+            
+        Returns:
+            Device object if found, None otherwise
+        """
         devices = await self.get_devices()
+        # Try to find by MAC first, then by _id
         device: Optional[Device] = next(
-            (d for d in devices if d.mac == device_mac), None
+            (d for d in devices if d.mac == device_identifier), None
         )
         if not device:
+            device = next(
+                (d for d in devices if getattr(d, "_id", None) == device_identifier or 
+                 (hasattr(d, "raw") and d.raw.get("_id") == device_identifier)), 
+                None
+            )
+        if not device:
             logger.debug(
-                "Device details for MAC %s not found in devices list.", device_mac
+                "Device details for identifier %s not found in devices list.", device_identifier
             )
         return device
 

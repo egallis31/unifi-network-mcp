@@ -41,14 +41,24 @@ async def list_devices(
         # Filter by device type
         if device_type != "all":
             prefix_map = {
-                "ap": "uap",
+                "ap": ("uap",),
+                "uap": ("uap",),
                 "switch": ("usw", "usk"),
+                "usw": ("usw", "usk"),
                 "gateway": ("ugw", "udm", "uxg"),
-                "pdu": "usp",
+                "ugw": ("ugw", "udm", "uxg"),
+                "udm": ("udm",),
+                "pdu": ("usp",),
+                "usp": ("usp",),
             }
             prefixes = prefix_map.get(device_type)
             if prefixes:
-                devices_raw = [d for d in devices_raw if isinstance(d, dict) and d.get("type", "").startswith(prefixes)]
+                devices_raw = [
+                    d for d in devices_raw 
+                    if isinstance(d, dict) and any(
+                        d.get("type", "").startswith(p) for p in prefixes
+                    )
+                ]
 
         # Filter by status
         formatted_devices = []
