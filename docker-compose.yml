@@ -6,6 +6,7 @@ services:
     env_file:
       - .env
     environment:
+      - UNIFI_CONTROLLER_TYPE=${UNIFI_CONTROLLER_TYPE:-auto}
       - UNIFI_HOST=${UNIFI_HOST:-localhost}
       - UNIFI_USERNAME=${UNIFI_USERNAME}
       - UNIFI_PASSWORD=${UNIFI_PASSWORD}

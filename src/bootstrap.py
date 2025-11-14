@@ -31,6 +31,7 @@ load_dotenv()
 
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 DEFAULT_LOG_LEVEL = os.getenv("UNIFI_MCP_LOG_LEVEL", "INFO").upper()
+UNIFI_CONTROLLER_TYPE = os.getenv("UNIFI_CONTROLLER_TYPE", "auto").lower()
 
 
 def setup_logging(level: str | None = None) -> logging.Logger:
