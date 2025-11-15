@@ -47,7 +47,67 @@ class SystemManager:
         try:
             api_request = ApiRequest(method="get", path="/stat/sysinfo")
             response = await self._connection.request(api_request)
+
+            # Enhanced logging to debug empty responses
+            logger.info(
+                "System info endpoint response type: %s, keys: %s",
+                type(response).__name__,
+                list(response.keys()) if isinstance(response, dict) else "N/A"
+            )
+
             info = response if isinstance(response, dict) else {}
+
+            # Add controller metadata for debugging
+            controller_metadata = {
+                "_controller_type": (
+                    "UniFi OS (proxy)" if getattr(self._connection, "_unifi_os_override", None)
+                    else "Standard (direct)" if self._connection._unifi_os_override is False
+                    else "Unknown/Auto-detecting"
+                ),
+                "_controller_url": self._connection.url_base,
+            }
+
+            # If empty, try alternative endpoint for controller status
+            if not info:
+                logger.warning(
+                    "/stat/sysinfo returned empty/non-dict. Trying /stat/status fallback."
+                )
+                try:
+                    status_request = ApiRequest(method="get", path="/stat/status")
+                    status_response = await self._connection.request(status_request)
+                    if isinstance(status_response, dict) and status_response:
+                        logger.info("Using /stat/status as fallback for system info")
+                        info = {
+                            "_source": "status_fallback",
+                            "_note": (
+                                "/stat/sysinfo was empty - this is common on UniFi OS controllers. "
+                                "Using /stat/status instead."
+                            ),
+                            **controller_metadata,
+                            **status_response
+                        }
+                    else:
+                        # Both endpoints failed/empty
+                        info = {
+                            "_source": "no_data",
+                            "_note": (
+                                "Both /stat/sysinfo and /stat/status returned empty. "
+                                "This may indicate: (1) UniFi OS controller requiring different endpoints, "
+                                "(2) Insufficient permissions, or (3) Older controller version."
+                            ),
+                            **controller_metadata
+                        }
+                except Exception as status_error:
+                    logger.debug("Status fallback also failed: %s", status_error)
+                    info = {
+                        "_source": "error",
+                        "_note": f"/stat/sysinfo empty, /stat/status error: {status_error}",
+                        **controller_metadata
+                    }
+            else:
+                # Merge controller metadata into existing info
+                info.update(controller_metadata)
+
             self._connection.update_cache(cache_key, info, timeout=15)
             return info
         except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:
