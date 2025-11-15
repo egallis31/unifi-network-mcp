@@ -96,6 +96,19 @@ class StatsManager:
             )
             if result:
                 logger.debug("Sample data point: %s", result[0])
+                # Log what fields are actually present
+                available_fields = set()
+                for item in result:
+                    available_fields.update(item.keys())
+                logger.info("Available fields in network stats: %s", sorted(available_fields))
+
+                # Check if traffic fields have data
+                total_wan_rx = sum(int(e.get("wan-rx_bytes", 0) or 0) for e in result)
+                total_wan_tx = sum(int(e.get("wan-tx_bytes", 0) or 0) for e in result)
+                logger.info(
+                    "Network stats aggregate: rx=%d, tx=%d (from %d data points)",
+                    total_wan_rx, total_wan_tx, len(result)
+                )
             else:
                 logger.warning(
                     "Network stats returned empty data for %dh duration. "

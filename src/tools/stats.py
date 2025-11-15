@@ -53,35 +53,90 @@ async def get_network_stats(duration: str = "hourly") -> Dict[str, Any]:
             ) if stats else 0,
         }
 
-        # If stats are empty, try to get health data as a fallback
+        # If stats are empty or zero, use multiple fallback strategies
         warning_message = None
+        health_data = None
+        aggregated_from_sources = None
+
         if not stats or (total_rx == 0 and total_tx == 0):
-            logger.info("Network stats empty or zero, fetching health data as fallback")
+            logger.warning(
+                "Network stats returned empty/zero (stats_count=%d, rx=%d, tx=%d). "
+                "Attempting fallback strategies...",
+                len(stats), total_rx, total_tx
+            )
+
+            # Strategy 1: Get health data for current snapshot
             try:
                 health = await system_manager.get_network_health()
                 if health:
-                    warning_message = (
-                        "Historical network stats returned empty/zero data. "
-                        "Showing current health snapshot instead. This may indicate "
-                        "the controller hasn't aggregated data yet or stats collection "
-                        "is disabled."
-                    )
-                    # Health data has a different structure - extract what we can
                     health_items = health.get("items", []) if isinstance(health, dict) else health
-                    return {
-                        "success": True,
-                        "site": getattr(
-                            getattr(stats_manager, "_connection", None), "site", "unknown"
-                        ),
-                        "duration": duration,
-                        "warning": warning_message,
-                        "summary": summary,  # Keep the zero summary
-                        "health_fallback": health_items,  # Include health data
-                        "stats": stats
-                    }
+                    health_data = health_items
+                    logger.info("Health fallback retrieved %d subsystem(s)", len(health_items) if isinstance(health_items, list) else 0)
+
+                    # Extract traffic from health data if available
+                    if isinstance(health_items, list):
+                        for subsystem in health_items:
+                            subsystem_name = subsystem.get("subsystem", "unknown")
+                            tx_bytes = subsystem.get("tx_bytes")
+                            rx_bytes = subsystem.get("rx_bytes")
+                            if tx_bytes or rx_bytes:
+                                logger.info(
+                                    "Health subsystem '%s': tx=%s, rx=%s",
+                                    subsystem_name, tx_bytes, rx_bytes
+                                )
             except Exception as health_error:
                 logger.debug("Failed to fetch health fallback: %s", health_error)
 
+            # Strategy 2: Aggregate from device stats if available
+            try:
+                logger.info("Attempting to aggregate traffic from device stats...")
+                devices = await device_manager.get_devices()
+                device_traffic = {"rx": 0, "tx": 0, "devices_counted": 0}
+
+                for device in devices:
+                    # Try to get current stats from device object
+                    dev_raw = device.raw if hasattr(device, "raw") else device
+                    if isinstance(dev_raw, dict):
+                        stat_rx = dev_raw.get("stat", {}).get("rx_bytes") or dev_raw.get("rx_bytes")
+                        stat_tx = dev_raw.get("stat", {}).get("tx_bytes") or dev_raw.get("tx_bytes")
+                        if stat_rx or stat_tx:
+                            device_traffic["rx"] += int(stat_rx or 0)
+                            device_traffic["tx"] += int(stat_tx or 0)
+                            device_traffic["devices_counted"] += 1
+
+                if device_traffic["devices_counted"] > 0:
+                    logger.info(
+                        "Aggregated from %d devices: rx=%d, tx=%d",
+                        device_traffic["devices_counted"],
+                        device_traffic["rx"],
+                        device_traffic["tx"]
+                    )
+                    aggregated_from_sources = {
+                        "source": "device_aggregation",
+                        "rx_bytes": device_traffic["rx"],
+                        "tx_bytes": device_traffic["tx"],
+                        "total_bytes": device_traffic["rx"] + device_traffic["tx"],
+                        "devices_counted": device_traffic["devices_counted"],
+                        "note": "Aggregated from current device stats (cumulative since device adoption)"
+                    }
+            except Exception as device_error:
+                logger.debug("Failed to aggregate from devices: %s", device_error)
+
+            # Build warning message
+            if health_data or aggregated_from_sources:
+                warning_parts = [
+                    "Historical network stats endpoint returned empty/zero data.",
+                    "This is a known issue with some UniFi controllers when querying site-level aggregates."
+                ]
+                if aggregated_from_sources:
+                    warning_parts.append(
+                        f"Showing aggregated traffic from {aggregated_from_sources['devices_counted']} devices instead."
+                    )
+                if health_data:
+                    warning_parts.append("Also showing current health snapshot.")
+                warning_message = " ".join(warning_parts)
+
+        # Build comprehensive result with all available data
         result = {
             "success": True,
             "site": getattr(
@@ -91,8 +146,15 @@ async def get_network_stats(duration: str = "hourly") -> Dict[str, Any]:
             "summary": summary,
             "stats": stats
         }
+
+        # Add fallback data if available
         if warning_message:
             result["warning"] = warning_message
+        if health_data:
+            result["health_fallback"] = health_data
+        if aggregated_from_sources:
+            result["aggregated_traffic"] = aggregated_from_sources
+
         return result
     except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as e:  # noqa: BLE001 # pylint: disable=broad-exception-caught
         logger.error("Error getting network stats: %s", e, exc_info=True)
