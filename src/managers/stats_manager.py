@@ -343,6 +343,11 @@ class StatsManager:
             response = await self._connection.request(api_request)
             events_data = response if isinstance(response, list) else []
 
+            logger.info(
+                "Alerts API returned %d total events from last 24h",
+                len(events_data)
+            )
+
             # Convert to Event objects and filter for alert-like events
             alerts = []
             alert_keywords = [
@@ -350,18 +355,29 @@ class StatsManager:
                 "Lost_Contact", "Overheat", "Overload"
             ]
 
+            archived_filtered = 0
+            keyword_filtered = 0
+
             for event_data in events_data:
                 try:
                     event = Event(event_data)
                     # Check if this looks like an alert/warning event
                     event_key = event_data.get("key", "")
                     if any(keyword in event_key for keyword in alert_keywords):
+                        keyword_filtered += 1
                         if (include_archived or
                                 not event_data.get("archived", False)):
                             alerts.append(event)
+                        else:
+                            archived_filtered += 1
                 except (RequestError, ResponseError, ConnectionError, ValueError, TypeError) as event_error:
                     logger.debug("Skipping invalid event data: %s", event_error)
                     continue
+
+            logger.info(
+                "Alert filtering: %d events -> %d matched keywords -> %d after archive filter (archived_filtered=%d, include_archived=%s)",
+                len(events_data), keyword_filtered, len(alerts), archived_filtered, include_archived
+            )
 
             self._connection.update_cache(cache_key, alerts, timeout=60)
             return alerts

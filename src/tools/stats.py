@@ -306,22 +306,41 @@ async def get_alerts(limit: int = 10, include_archived: bool = False) -> Dict[st
     """Implementation for getting alerts."""
     try:
         alerts = await stats_manager.get_alerts(include_archived=include_archived)
-        # Apply limit manually since the manager doesn't support it
-        if limit and len(alerts) > limit:
+        total_count = len(alerts)
+
+        # Log alert count before limiting
+        logger.info(
+            "Retrieved %d total alerts (include_archived=%s), applying limit=%d",
+            total_count, include_archived, limit
+        )
+
+        # Apply limit - ensure we always limit if limit > 0
+        if limit > 0 and len(alerts) > limit:
             alerts = alerts[:limit]
-        
+            logger.info("Limited alerts from %d to %d", total_count, len(alerts))
+
         # Serialize Event objects to dicts using their .raw attribute
         serialized_alerts = [
             event.raw if hasattr(event, 'raw') else event
             for event in alerts
         ]
-        
+        returned_count = len(serialized_alerts)
+
+        # Verify serialization didn't change count
+        if returned_count != len(alerts):
+            logger.warning(
+                "Alert count mismatch after serialization: %d alerts -> %d serialized",
+                len(alerts), returned_count
+            )
+
         return {
             "success": True,
             "site": getattr(
                 getattr(stats_manager, "_connection", None), "site", "unknown"
             ),
-            "limit": limit,
+            "limit_requested": limit,
+            "total_alerts_found": total_count,
+            "alerts_returned": returned_count,
             "include_archived": include_archived,
             "alerts": serialized_alerts
         }
